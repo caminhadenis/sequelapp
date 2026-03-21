@@ -10,6 +10,42 @@ import {
   sanitizeUserPayloadForRole
 } from '../utils/user-visibility.js';
 
+function totalGames(user) {
+  return (
+    Number(user?.totalWins || 0) +
+    Number(user?.totalDraws || 0) +
+    Number(user?.totalLosses || 0)
+  );
+}
+
+function topThreeByPosition(users = [], position) {
+  return users
+    .filter((user) => user.position === position)
+    .sort((a, b) => {
+      const ratingDiff = Number(b.ratingAverage || 0) - Number(a.ratingAverage || 0);
+      if (ratingDiff !== 0) {
+        return ratingDiff;
+      }
+
+      // Desempate para "melhor por posicao": mais jogos primeiro.
+      const gamesDiff = totalGames(b) - totalGames(a);
+      if (gamesDiff !== 0) {
+        return gamesDiff;
+      }
+
+      return String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR');
+    })
+    .slice(0, 3)
+    .map((user) => ({
+      id: String(user._id),
+      name: user.name,
+      username: user.username,
+      position: user.position,
+      profileImageUrl: user.profileImageUrl || null,
+      games: totalGames(user)
+    }));
+}
+
 export async function userRoutes(fastify) {
   fastify.get('/me', { preHandler: [authenticate] }, async (request) => {
     const user = await User.findById(request.user.id);
@@ -167,6 +203,28 @@ export async function userRoutes(fastify) {
       totalTournamentTitles: user.totalTournamentTitles || 0
     }));
   });
+
+  fastify.get(
+    '/ranking/by-position',
+    {
+      preHandler: [authenticate]
+    },
+    async () => {
+      const users = await User.find(
+        {
+          role: 'JOGADOR',
+          $or: [{ approvalStatus: 'APPROVED' }, { approvalStatus: { $exists: false } }]
+        },
+        'name username position profileImageUrl ratingAverage totalWins totalDraws totalLosses'
+      ).lean();
+
+      return {
+        zagueiro: topThreeByPosition(users, 'ZAGUEIRO'),
+        meia: topThreeByPosition(users, 'MEIA'),
+        atacante: topThreeByPosition(users, 'ATACANTE')
+      };
+    }
+  );
 
   fastify.patch(
     '/:id/approve',

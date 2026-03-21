@@ -34,6 +34,21 @@ export interface PendingApprovalUser {
   createdAt: string;
 }
 
+export interface PositionRankingEntry {
+  id: string;
+  name: string;
+  username: string;
+  position: PlayerPosition;
+  profileImageUrl?: string | null;
+  games: number;
+}
+
+export interface PositionRankingResponse {
+  zagueiro: PositionRankingEntry[];
+  meia: PositionRankingEntry[];
+  atacante: PositionRankingEntry[];
+}
+
 export interface AuthResponse {
   token: string;
   user: User;

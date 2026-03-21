@@ -2,7 +2,12 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
-import { PendingApprovalUser, PlayerPosition, User } from '../../models/user';
+import {
+  PendingApprovalUser,
+  PlayerPosition,
+  PositionRankingResponse,
+  User
+} from '../../models/user';
 
 @Injectable({ providedIn: 'root' })
 export class UserService {
@@ -12,6 +17,10 @@ export class UserService {
 
   getUsers(): Observable<User[]> {
     return this.http.get<User[]>(`${this.apiUrl}/users`);
+  }
+
+  getPositionRanking(): Observable<PositionRankingResponse> {
+    return this.http.get<PositionRankingResponse>(`${this.apiUrl}/users/ranking/by-position`);
   }
 
   getPendingUsers(): Observable<PendingApprovalUser[]> {
