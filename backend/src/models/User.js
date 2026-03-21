@@ -1,5 +1,44 @@
 import mongoose from 'mongoose';
 
+const pushSubscriptionSchema = new mongoose.Schema(
+  {
+    endpoint: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    expirationTime: {
+      type: Number,
+      default: null
+    },
+    keys: {
+      p256dh: {
+        type: String,
+        required: true
+      },
+      auth: {
+        type: String,
+        required: true
+      }
+    },
+    userAgent: {
+      type: String,
+      trim: true
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now
+    },
+    updatedAt: {
+      type: Date,
+      default: Date.now
+    }
+  },
+  {
+    _id: false
+  }
+);
+
 const userSchema = new mongoose.Schema(
   {
     name: {
@@ -91,7 +130,8 @@ const userSchema = new mongoose.Schema(
     totalTournamentTitles: {
       type: Number,
       default: 0
-    }
+    },
+    pushSubscriptions: [pushSubscriptionSchema]
   },
   {
     timestamps: true
@@ -104,6 +144,7 @@ userSchema.set('toJSON', {
     delete ret._id;
     delete ret.__v;
     delete ret.passwordHash;
+    delete ret.pushSubscriptions;
     return ret;
   }
 });

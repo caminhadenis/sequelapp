@@ -62,6 +62,21 @@
   font-size: 0.95rem;
 }
 
+.admin-broadcast-card {
+  grid-column: 1 / -1;
+  background: linear-gradient(145deg, #fff4e8, #f6ebff);
+  border-color: #f97316;
+}
+
+.broadcast-form {
+  display: grid;
+  gap: 8px;
+}
+
+.broadcast-form mat-form-field {
+  width: 100%;
+}
+
 .admin-approvals-header {
   display: flex;
   justify-content: space-between;

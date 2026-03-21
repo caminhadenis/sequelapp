@@ -9,6 +9,10 @@ import {
   User
 } from '../../models/user';
 
+export interface PushSubscriptionPayload {
+  subscription: PushSubscriptionJSON;
+}
+
 @Injectable({ providedIn: 'root' })
 export class UserService {
   private readonly apiUrl = environment.apiUrl;
@@ -53,5 +57,29 @@ export class UserService {
     profileImageDataUrl?: string | null;
   }): Observable<{ message: string; user: User }> {
     return this.http.patch<{ message: string; user: User }>(`${this.apiUrl}/users/me/profile`, payload);
+  }
+
+  savePushSubscription(payload: PushSubscriptionPayload): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.apiUrl}/users/me/push-subscriptions`, payload);
+  }
+
+  removePushSubscription(endpoint: string): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.apiUrl}/users/me/push-subscriptions/remove`, {
+      endpoint
+    });
+  }
+
+  broadcastAdminMessage(message: string): Observable<{
+    message: string;
+    playersCount: number;
+    sent: number;
+    failed: number;
+  }> {
+    return this.http.post<{
+      message: string;
+      playersCount: number;
+      sent: number;
+      failed: number;
+    }>(`${this.apiUrl}/users/notifications/broadcast`, { message });
   }
 }

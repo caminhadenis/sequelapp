@@ -86,6 +86,47 @@
             </div>
           }
         </article>
+
+        <article class="admin-tool-card admin-broadcast-card">
+          <div class="admin-approvals-header">
+            <h3>Mensagem rápida para jogadores</h3>
+            <span class="status-chip">Push para todos</span>
+          </div>
+
+          <form [formGroup]="adminBroadcastForm" class="broadcast-form" (ngSubmit)="sendAdminBroadcast()">
+            <mat-form-field appearance="outline">
+              <mat-label>Mensagem curta</mat-label>
+              <textarea
+                matInput
+                formControlName="message"
+                rows="3"
+                [attr.maxlength]="adminBroadcastMaxLength"
+                placeholder="Ex: Galera, votação do racha de hoje já está aberta!"
+              ></textarea>
+              <mat-hint align="end">
+                {{ (adminBroadcastForm.controls.message.value || '').length }}/{{ adminBroadcastMaxLength }}
+              </mat-hint>
+              @if (adminBroadcastForm.controls.message.hasError('required')) {
+                <mat-error>Digite uma mensagem para enviar.</mat-error>
+              }
+              @if (adminBroadcastForm.controls.message.hasError('maxlength')) {
+                <mat-error>Use no máximo {{ adminBroadcastMaxLength }} caracteres.</mat-error>
+              }
+            </mat-form-field>
+
+            <div class="form-actions">
+              <button
+                mat-flat-button
+                color="primary"
+                type="submit"
+                [disabled]="sendingAdminPush || adminBroadcastForm.invalid"
+              >
+                <mat-icon>campaign</mat-icon>
+                Enviar notificação
+              </button>
+            </div>
+          </form>
+        </article>
       </div>
     </section>
   }

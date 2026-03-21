@@ -5,6 +5,7 @@ import {
   removeProfileImageByPublicPath,
   saveProfileImageFromDataUrl
 } from '../utils/profile-image.js';
+import { isWebPushConfigured, sendPushNotificationToUsers } from '../utils/push-notification.js';
 import {
   canRequesterSeeRatings,
   sanitizeUserPayloadForRole
@@ -44,6 +45,32 @@ function topThreeByPosition(users = [], position) {
       profileImageUrl: user.profileImageUrl || null,
       games: totalGames(user)
     }));
+}
+
+function parsePushSubscription(input) {
+  const subscription = input || {};
+  const endpoint = String(subscription.endpoint || '').trim();
+  const p256dh = String(subscription?.keys?.p256dh || '').trim();
+  const auth = String(subscription?.keys?.auth || '').trim();
+
+  if (!endpoint || !p256dh || !auth) {
+    return null;
+  }
+
+  return {
+    endpoint,
+    expirationTime:
+      typeof subscription.expirationTime === 'number' && Number.isFinite(subscription.expirationTime)
+        ? subscription.expirationTime
+        : null,
+    keys: { p256dh, auth }
+  };
+}
+
+function normalizeBroadcastMessage(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ');
 }
 
 export async function userRoutes(fastify) {
@@ -142,6 +169,81 @@ export async function userRoutes(fastify) {
     };
   });
 
+  fastify.post('/me/push-subscriptions', { preHandler: [authenticate] }, async (request, reply) => {
+    if (request.user.role !== 'JOGADOR') {
+      return reply.code(403).send({ message: 'Apenas jogadores podem registrar notificações push.' });
+    }
+
+    if (!isWebPushConfigured()) {
+      return reply.code(503).send({
+        message:
+          'Notificações push não configuradas no servidor. Defina WEB_PUSH_PUBLIC_KEY e WEB_PUSH_PRIVATE_KEY.'
+      });
+    }
+
+    const parsedSubscription = parsePushSubscription(request.body?.subscription);
+    if (!parsedSubscription) {
+      return reply.code(400).send({
+        message: 'Subscription inválida. Informe endpoint e keys (p256dh/auth).'
+      });
+    }
+
+    const user = await User.findById(request.user.id);
+    if (!user) {
+      return reply.code(404).send({ message: 'Usuario nao encontrado.' });
+    }
+
+    const now = new Date();
+    const userAgent = String(request.headers['user-agent'] || '').trim();
+    const existing = (user.pushSubscriptions || []).find(
+      (subscription) => String(subscription.endpoint) === parsedSubscription.endpoint
+    );
+
+    if (existing) {
+      existing.expirationTime = parsedSubscription.expirationTime;
+      existing.keys = parsedSubscription.keys;
+      existing.userAgent = userAgent;
+      existing.updatedAt = now;
+    } else {
+      user.pushSubscriptions.push({
+        ...parsedSubscription,
+        userAgent,
+        createdAt: now,
+        updatedAt: now
+      });
+    }
+
+    await user.save();
+
+    return {
+      message: 'Subscription push registrada com sucesso.'
+    };
+  });
+
+  fastify.post('/me/push-subscriptions/remove', { preHandler: [authenticate] }, async (request, reply) => {
+    if (request.user.role !== 'JOGADOR') {
+      return reply.code(403).send({ message: 'Apenas jogadores podem remover notificações push.' });
+    }
+
+    const endpoint = String(request.body?.endpoint || '').trim();
+    if (!endpoint) {
+      return reply.code(400).send({ message: 'Informe o endpoint da subscription para remoção.' });
+    }
+
+    await User.updateOne(
+      { _id: request.user.id },
+      {
+        $pull: {
+          pushSubscriptions: {
+            endpoint
+          }
+        }
+      }
+    );
+
+    return { message: 'Subscription push removida com sucesso.' };
+  });
+
   fastify.get(
     '/pending',
     {
@@ -166,6 +268,58 @@ export async function userRoutes(fastify) {
         approvalStatus: user.approvalStatus,
         createdAt: user.createdAt
       }));
+    }
+  );
+
+  fastify.post(
+    '/notifications/broadcast',
+    {
+      preHandler: [authenticate, authorize('ADM')]
+    },
+    async (request, reply) => {
+      if (!isWebPushConfigured()) {
+        return reply.code(503).send({
+          message:
+            'Notificações push não configuradas no servidor. Defina WEB_PUSH_PUBLIC_KEY e WEB_PUSH_PRIVATE_KEY.'
+        });
+      }
+
+      const text = normalizeBroadcastMessage(request.body?.message);
+      if (!text) {
+        return reply.code(400).send({ message: 'Informe uma mensagem para enviar aos jogadores.' });
+      }
+
+      if (text.length > 180) {
+        return reply.code(400).send({ message: 'A mensagem deve ter no máximo 180 caracteres.' });
+      }
+
+      const players = await User.find(
+        {
+          role: 'JOGADOR',
+          $or: [{ approvalStatus: 'APPROVED' }, { approvalStatus: { $exists: false } }]
+        },
+        '_id'
+      ).lean();
+
+      if (players.length === 0) {
+        return reply.code(404).send({ message: 'Não há jogadores aprovados para receber notificações.' });
+      }
+
+      const result = await sendPushNotificationToUsers(
+        players.map((player) => String(player._id)),
+        {
+          title: 'Recado do ADM',
+          body: text,
+          url: '/peladas'
+        }
+      );
+
+      return {
+        message: 'Notificação enviada para os jogadores.',
+        playersCount: players.length,
+        sent: result.sent,
+        failed: result.failed
+      };
     }
   );
 

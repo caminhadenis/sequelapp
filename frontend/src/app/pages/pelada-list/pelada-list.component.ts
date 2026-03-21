@@ -40,7 +40,9 @@ import { PlayerNamePipe } from '../../shared/pipes/player-name.pipe';
   styleUrls: ['./pelada-list.component.scss']
 })
 export class PeladaListComponent implements OnInit {
+  readonly adminBroadcastMaxLength = 180;
   loading = false;
+  sendingAdminPush = false;
   peladas: PeladaSummary[] = [];
   pendingUsers: PendingApprovalUser[] = [];
   approvingUserId: string | null = null;
@@ -49,6 +51,10 @@ export class PeladaListComponent implements OnInit {
   readonly createForm = this.formBuilder.group({
     date: ['', Validators.required],
     type: ['NORMAL', Validators.required]
+  });
+
+  readonly adminBroadcastForm = this.formBuilder.group({
+    message: ['', [Validators.required, Validators.maxLength(this.adminBroadcastMaxLength)]]
   });
 
   constructor(
@@ -183,6 +189,38 @@ export class PeladaListComponent implements OnInit {
         this.approvingUserId = null;
         this.snackBar.open(error?.error?.message || 'Falha ao aprovar jogador.', 'Fechar', {
           duration: 3000
+        });
+      }
+    });
+  }
+
+  sendAdminBroadcast(): void {
+    if (!this.authService.isAdmin || this.sendingAdminPush || this.adminBroadcastForm.invalid) {
+      this.adminBroadcastForm.markAllAsTouched();
+      return;
+    }
+
+    const message = String(this.adminBroadcastForm.getRawValue().message || '').trim();
+    if (!message) {
+      this.adminBroadcastForm.markAllAsTouched();
+      return;
+    }
+
+    this.sendingAdminPush = true;
+    this.userService.broadcastAdminMessage(message).subscribe({
+      next: (response) => {
+        this.sendingAdminPush = false;
+        this.adminBroadcastForm.reset({ message: '' });
+        this.snackBar.open(
+          `${response.message} Entregues: ${response.sent} | Falhas: ${response.failed}.`,
+          'Fechar',
+          { duration: 3500 }
+        );
+      },
+      error: (error) => {
+        this.sendingAdminPush = false;
+        this.snackBar.open(error?.error?.message || 'Falha ao enviar notificação.', 'Fechar', {
+          duration: 3500
         });
       }
     });

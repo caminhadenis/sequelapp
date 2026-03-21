@@ -25,6 +25,19 @@ if (hasAnyS3Config) {
   }
 }
 
+const hasAnyWebPushConfig = ['WEB_PUSH_PUBLIC_KEY', 'WEB_PUSH_PRIVATE_KEY'].some((key) =>
+  Boolean(process.env[key])
+);
+
+if (hasAnyWebPushConfig) {
+  const webPushRequired = ['WEB_PUSH_PUBLIC_KEY', 'WEB_PUSH_PRIVATE_KEY'];
+  for (const key of webPushRequired) {
+    if (!process.env[key]) {
+      throw new Error(`Variavel de ambiente obrigatoria ausente para Web Push: ${key}`);
+    }
+  }
+}
+
 export const env = {
   port: Number(process.env.PORT || 3000),
   mongoUri: process.env.MONGO_URI,
@@ -36,5 +49,8 @@ export const env = {
   awsS3PublicBaseUrl: process.env.AWS_S3_PUBLIC_BASE_URL || '',
   awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
   awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
-  awsSessionToken: process.env.AWS_SESSION_TOKEN || ''
+  awsSessionToken: process.env.AWS_SESSION_TOKEN || '',
+  webPushPublicKey: process.env.WEB_PUSH_PUBLIC_KEY || '',
+  webPushPrivateKey: process.env.WEB_PUSH_PRIVATE_KEY || '',
+  webPushSubject: process.env.WEB_PUSH_SUBJECT || 'mailto:admin@sequelapp.local'
 };

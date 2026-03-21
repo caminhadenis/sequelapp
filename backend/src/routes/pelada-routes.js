@@ -8,6 +8,7 @@ import {
   generateDoubleRoundRobinMatches,
   syncTeamResultsFromMatches
 } from '../utils/tournament.js';
+import { sendPushNotificationToUsers } from '../utils/push-notification.js';
 import { canRequesterSeeRatings } from '../utils/user-visibility.js';
 
 const CRAQUE_WEIGHTS = {
@@ -256,6 +257,29 @@ function clearCraqueResultSnapshot(pelada) {
   pelada.craqueResult = null;
 }
 
+function formatRachaDateLabel(dateValue) {
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toLocaleDateString('pt-BR', {
+    timeZone: 'UTC'
+  });
+}
+
+async function notifyPlayersSafely(fastify, userIds = [], notificationInput = {}) {
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    return;
+  }
+
+  try {
+    await sendPushNotificationToUsers(userIds, notificationInput);
+  } catch (error) {
+    fastify.log.error(error, 'Falha ao enviar notificacoes push.');
+  }
+}
+
 export async function peladaRoutes(fastify) {
   fastify.get('/', { preHandler: [authenticate] }, async () => {
     const peladas = await Pelada.find({}, 'date type status votingStatus teams')
@@ -440,6 +464,26 @@ export async function peladaRoutes(fastify) {
 
       await pelada.save();
       await recalculateAllUsersStats();
+
+      const allApprovedPlayers = await User.find(
+        {
+          role: 'JOGADOR',
+          $or: [{ approvalStatus: 'APPROVED' }, { approvalStatus: { $exists: false } }]
+        },
+        '_id'
+      ).lean();
+      const notificationDateLabel = formatRachaDateLabel(pelada.date);
+      await notifyPlayersSafely(
+        fastify,
+        allApprovedPlayers.map((item) => String(item._id)),
+        {
+          title: 'Times do racha confirmados',
+          body: notificationDateLabel
+            ? `A escalação do racha de ${notificationDateLabel} foi confirmada pelo ADM.`
+            : 'A escalação do racha foi confirmada pelo ADM.',
+          url: `/peladas/${String(pelada._id)}`
+        }
+      );
 
       return {
         id: String(pelada._id),
@@ -678,6 +722,16 @@ export async function peladaRoutes(fastify) {
       if (previousVotingStatus === 'FINISHED') {
         await recalculateAllUsersStats();
       }
+
+      const participants = getParticipantIdSet(pelada);
+      const notificationDateLabel = formatRachaDateLabel(pelada.date);
+      await notifyPlayersSafely(fastify, Array.from(participants), {
+        title: 'Votação liberada',
+        body: notificationDateLabel
+          ? `As notas do racha de ${notificationDateLabel} já estão abertas.`
+          : 'As notas deste racha já estão abertas.',
+        url: `/peladas/${String(pelada._id)}`
+      });
 
       return { message: 'Votacao aberta para esta pelada.' };
     }
