@@ -16,8 +16,8 @@ import { PlayerPosition, PositionRankingEntry, PositionRankingResponse, User } f
 import { PlayerNamePipe } from '../../shared/pipes/player-name.pipe';
 import { toAbsoluteProfileImageUrl } from '../../shared/utils/profile-image';
 
-type PodiumMetric = 'goals' | 'assists' | 'titles';
-type PodiumTieBreak = 'LESS_GAMES' | 'MORE_GAMES' | 'RATING';
+type PodiumMetric = 'goals' | 'assists' | 'titles' | 'wins' | 'craqueTop3';
+type PodiumTieBreak = 'LESS_GAMES' | 'MORE_GAMES' | 'RATING' | 'CRAQUE_OLYMPIC';
 
 interface PodiumEntry {
   rank: 1 | 2 | 3;
@@ -26,6 +26,12 @@ interface PodiumEntry {
   username: string;
   profileImageUrl: string | null;
   value: number;
+  secondaryLabel?: string;
+}
+
+interface PodiumSlot {
+  rank: 1 | 2 | 3;
+  entries: PodiumEntry[];
 }
 
 interface PodiumCategory {
@@ -35,14 +41,19 @@ interface PodiumCategory {
   icon: string;
   unit: string;
   topThree: PodiumEntry[];
-  slots: Array<PodiumEntry | null>;
+  slots: PodiumSlot[];
+}
+
+interface PositionPodiumRankGroup {
+  rank: 1 | 2 | 3;
+  players: PositionRankingEntry[];
 }
 
 interface PositionPodiumCard {
   key: PlayerPosition;
   title: string;
   subtitle: string;
-  players: PositionRankingEntry[];
+  rankGroups: PositionPodiumRankGroup[];
 }
 
 @Component({
@@ -181,11 +192,15 @@ export class RankingComponent implements OnInit {
     return Number((total / this.users.length).toFixed(2));
   }
 
+  hasPlayersInPositionCard(card: PositionPodiumCard): boolean {
+    return card.rankGroups.some((group) => group.players.length > 0);
+  }
+
   private buildPodiumCategories(): PodiumCategory[] {
     const goals = this.buildPodiumCategory({
       metric: 'goals',
       title: 'Artilheiros',
-      subtitle: 'Top 3 em gols no histórico',
+      subtitle: 'Top 3 em gols no histórico (desempate: menos rachas)',
       icon: 'sports_soccer',
       unit: 'gols',
       metricValue: (user) => Number(user.totalGoals || 0),
@@ -195,7 +210,7 @@ export class RankingComponent implements OnInit {
     const assists = this.buildPodiumCategory({
       metric: 'assists',
       title: 'Garçons',
-      subtitle: 'Top 3 em assistências',
+      subtitle: 'Top 3 em assistências (desempate: menos rachas)',
       icon: 'assistant',
       unit: 'assistências',
       metricValue: (user) => Number(user.totalAssists || 0),
@@ -212,7 +227,29 @@ export class RankingComponent implements OnInit {
       tieBreak: 'RATING'
     });
 
-    return [goals, assists, titles];
+    const wins = this.buildPodiumCategory({
+      metric: 'wins',
+      title: 'Mais Vitórias',
+      subtitle: 'Top 3 em vitórias (desempate: menos rachas)',
+      icon: 'military_tech',
+      unit: 'vitórias',
+      metricValue: (user) => Number(user.totalWins || 0),
+      tieBreak: 'LESS_GAMES'
+    });
+
+    const craqueTop3 = this.buildPodiumCategory({
+      metric: 'craqueTop3',
+      title: 'Presença no Top 3 Craque',
+      subtitle: 'Top 3 de participações no pódio de craque (desempate olímpico: 1º, 2º, 3º)',
+      icon: 'workspace_premium',
+      unit: 'participações',
+      metricValue: (user) => this.totalCraqueTop3Participations(user),
+      tieBreak: 'CRAQUE_OLYMPIC',
+      secondaryLabel: (user) =>
+        `1º: ${Number(user.totalCraqueFirstPlaces || 0)} • 2º: ${Number(user.totalCraqueSecondPlaces || 0)} • 3º: ${Number(user.totalCraqueThirdPlaces || 0)}`
+    });
+
+    return [goals, assists, titles, wins, craqueTop3];
   }
 
   private buildPodiumCategory(config: {
@@ -223,8 +260,9 @@ export class RankingComponent implements OnInit {
     unit: string;
     metricValue: (user: User) => number;
     tieBreak: PodiumTieBreak;
+    secondaryLabel?: (user: User) => string;
   }): PodiumCategory {
-    const topThree = this.getTopThree(config.metricValue, config.tieBreak);
+    const topThree = this.getTopThreeEntries(config.metricValue, config.tieBreak, config.secondaryLabel);
     return {
       metric: config.metric,
       title: config.title,
@@ -232,39 +270,78 @@ export class RankingComponent implements OnInit {
       icon: config.icon,
       unit: config.unit,
       topThree,
-      slots: [this.findByRank(topThree, 2), this.findByRank(topThree, 1), this.findByRank(topThree, 3)]
+      slots: this.buildPodiumSlots(topThree)
     };
   }
 
-  private getTopThree(metricValue: (user: User) => number, tieBreak: PodiumTieBreak): PodiumEntry[] {
+  private getTopThreeEntries(
+    metricValue: (user: User) => number,
+    tieBreak: PodiumTieBreak,
+    secondaryLabel?: (user: User) => string
+  ): PodiumEntry[] {
     const sorted = [...this.users]
-      .filter((user) => metricValue(user) > 0)
+      .map((user) => ({
+        user,
+        metric: metricValue(user),
+        tieBreakKey: this.resolveTieBreakKey(user, tieBreak)
+      }))
+      .filter((item) => item.metric > 0)
       .sort((a, b) => {
-        const metricDiff = metricValue(b) - metricValue(a);
-        if (metricDiff !== 0) return metricDiff;
-
-        if (tieBreak === 'LESS_GAMES') {
-          const gamesDiff = this.totalGames(a) - this.totalGames(b);
-          if (gamesDiff !== 0) return gamesDiff;
-        } else if (tieBreak === 'MORE_GAMES') {
-          const gamesDiff = this.totalGames(b) - this.totalGames(a);
-          if (gamesDiff !== 0) return gamesDiff;
-        } else {
-          const ratingDiff = Number(b.ratingAverage || 0) - Number(a.ratingAverage || 0);
-          if (ratingDiff !== 0) return ratingDiff;
+        const metricDiff = b.metric - a.metric;
+        if (metricDiff !== 0) {
+          return metricDiff;
         }
 
-        return a.name.localeCompare(b.name, 'pt-BR');
-      })
-      .slice(0, 3);
+        const tieBreakDiff = this.compareUsersByTieBreak(a.user, b.user, tieBreak);
+        if (tieBreakDiff !== 0) {
+          return tieBreakDiff;
+        }
 
-    return sorted.map((user, index) => ({
-      rank: (index + 1) as 1 | 2 | 3,
-      userId: user.id,
-      userName: user.name,
-      username: user.username,
-      profileImageUrl: toAbsoluteProfileImageUrl(user.profileImageUrl),
-      value: metricValue(user)
+        return a.user.name.localeCompare(b.user.name, 'pt-BR');
+      });
+
+    const ranking: PodiumEntry[] = [];
+    let previous: { metric: number; tieBreakKey: string; rank: 1 | 2 | 3 } | null = null;
+
+    for (let index = 0; index < sorted.length; index += 1) {
+      const item = sorted[index];
+      let rank: number = 1;
+
+      if (previous) {
+        const isTie = item.metric === previous.metric && item.tieBreakKey === previous.tieBreakKey;
+        rank = isTie ? previous.rank : previous.rank + 1;
+      }
+
+      if (rank > 3) {
+        break;
+      }
+
+      const normalizedRank = rank as 1 | 2 | 3;
+      ranking.push({
+        rank: normalizedRank,
+        userId: item.user.id,
+        userName: item.user.name,
+        username: item.user.username,
+        profileImageUrl: toAbsoluteProfileImageUrl(item.user.profileImageUrl),
+        value: item.metric,
+        secondaryLabel: secondaryLabel ? secondaryLabel(item.user) : undefined
+      });
+
+      previous = {
+        metric: item.metric,
+        tieBreakKey: item.tieBreakKey,
+        rank: normalizedRank
+      };
+    }
+
+    return ranking;
+  }
+
+  private buildPodiumSlots(entries: PodiumEntry[]): PodiumSlot[] {
+    const rankOrder: Array<1 | 2 | 3> = [2, 1, 3];
+    return rankOrder.map((rank) => ({
+      rank,
+      entries: this.findByRank(entries, rank)
     }));
   }
 
@@ -273,29 +350,95 @@ export class RankingComponent implements OnInit {
       {
         key: 'ZAGUEIRO',
         title: 'Melhores Zagueiros',
-        subtitle: 'Top 3 por nota média (desempate: mais jogos)',
-        players: this.normalizePositionEntries(byPosition.zagueiro || [])
+        subtitle: 'Top 3 por nota média (desempate: mais rachas)',
+        rankGroups: this.buildPositionRankGroups(this.normalizePositionEntries(byPosition.zagueiro || []))
       },
       {
         key: 'MEIA',
         title: 'Melhores Meias',
-        subtitle: 'Top 3 por nota média (desempate: mais jogos)',
-        players: this.normalizePositionEntries(byPosition.meia || [])
+        subtitle: 'Top 3 por nota média (desempate: mais rachas)',
+        rankGroups: this.buildPositionRankGroups(this.normalizePositionEntries(byPosition.meia || []))
       },
       {
         key: 'ATACANTE',
         title: 'Melhores Atacantes',
-        subtitle: 'Top 3 por nota média (desempate: mais jogos)',
-        players: this.normalizePositionEntries(byPosition.atacante || [])
+        subtitle: 'Top 3 por nota média (desempate: mais rachas)',
+        rankGroups: this.buildPositionRankGroups(this.normalizePositionEntries(byPosition.atacante || []))
       }
     ];
+  }
+
+  private buildPositionRankGroups(entries: PositionRankingEntry[]): PositionPodiumRankGroup[] {
+    const rankOrder: Array<1 | 2 | 3> = [1, 2, 3];
+    return rankOrder.map((rank) => ({
+      rank,
+      players: entries.filter((entry) => entry.rank === rank)
+    }));
   }
 
   private normalizePositionEntries(entries: PositionRankingEntry[]): PositionRankingEntry[] {
     return entries.map((entry) => ({
       ...entry,
+      rank: this.toRank(entry.rank),
       profileImageUrl: toAbsoluteProfileImageUrl(entry.profileImageUrl)
     }));
+  }
+
+  private compareUsersByTieBreak(leftUser: User, rightUser: User, tieBreak: PodiumTieBreak): number {
+    if (tieBreak === 'LESS_GAMES') {
+      return this.totalGames(leftUser) - this.totalGames(rightUser);
+    }
+
+    if (tieBreak === 'MORE_GAMES') {
+      return this.totalGames(rightUser) - this.totalGames(leftUser);
+    }
+
+    if (tieBreak === 'RATING') {
+      return Number(rightUser.ratingAverage || 0) - Number(leftUser.ratingAverage || 0);
+    }
+
+    const leftFirst = Number(leftUser.totalCraqueFirstPlaces || 0);
+    const rightFirst = Number(rightUser.totalCraqueFirstPlaces || 0);
+    if (rightFirst !== leftFirst) {
+      return rightFirst - leftFirst;
+    }
+
+    const leftSecond = Number(leftUser.totalCraqueSecondPlaces || 0);
+    const rightSecond = Number(rightUser.totalCraqueSecondPlaces || 0);
+    if (rightSecond !== leftSecond) {
+      return rightSecond - leftSecond;
+    }
+
+    const leftThird = Number(leftUser.totalCraqueThirdPlaces || 0);
+    const rightThird = Number(rightUser.totalCraqueThirdPlaces || 0);
+    if (rightThird !== leftThird) {
+      return rightThird - leftThird;
+    }
+
+    return 0;
+  }
+
+  private resolveTieBreakKey(user: User, tieBreak: PodiumTieBreak): string {
+    if (tieBreak === 'LESS_GAMES' || tieBreak === 'MORE_GAMES') {
+      return String(this.totalGames(user));
+    }
+
+    if (tieBreak === 'RATING') {
+      return String(Number(user.ratingAverage || 0));
+    }
+
+    const first = Number(user.totalCraqueFirstPlaces || 0);
+    const second = Number(user.totalCraqueSecondPlaces || 0);
+    const third = Number(user.totalCraqueThirdPlaces || 0);
+    return `${first}|${second}|${third}`;
+  }
+
+  private totalCraqueTop3Participations(user: User): number {
+    return (
+      Number(user.totalCraqueFirstPlaces || 0) +
+      Number(user.totalCraqueSecondPlaces || 0) +
+      Number(user.totalCraqueThirdPlaces || 0)
+    );
   }
 
   private totalGames(user: User): number {
@@ -306,8 +449,16 @@ export class RankingComponent implements OnInit {
     );
   }
 
-  private findByRank(entries: PodiumEntry[], rank: 1 | 2 | 3): PodiumEntry | null {
-    return entries.find((entry) => entry.rank === rank) || null;
+  private findByRank(entries: PodiumEntry[], rank: 1 | 2 | 3): PodiumEntry[] {
+    return entries.filter((entry) => entry.rank === rank);
+  }
+
+  private toRank(value: number): 1 | 2 | 3 {
+    if (value === 1 || value === 2 || value === 3) {
+      return value;
+    }
+
+    return 3;
   }
 
   private normalize(value: string): string {

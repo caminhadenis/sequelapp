@@ -36,6 +36,7 @@ export interface PendingApprovalUser {
 
 export interface PositionRankingEntry {
   id: string;
+  rank: number;
   name: string;
   username: string;
   position: PlayerPosition;

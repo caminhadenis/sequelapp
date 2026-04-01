@@ -6,6 +6,80 @@ function toIdString(id) {
   return String(id);
 }
 
+const CRAQUE_WEIGHTS = {
+  firstUser: 5,
+  secondUser: 3,
+  thirdUser: 1
+};
+
+function computeCraqueTop3FromVotes(craqueVotes = []) {
+  const ranking = new Map();
+
+  function ensurePlayer(playerId) {
+    if (!ranking.has(playerId)) {
+      ranking.set(playerId, {
+        playerId,
+        points: 0,
+        firstPlaces: 0,
+        secondPlaces: 0,
+        thirdPlaces: 0
+      });
+    }
+    return ranking.get(playerId);
+  }
+
+  for (const vote of craqueVotes) {
+    const firstId = toIdString(vote.firstUser);
+    const secondId = toIdString(vote.secondUser);
+    const thirdId = toIdString(vote.thirdUser);
+
+    const first = ensurePlayer(firstId);
+    const second = ensurePlayer(secondId);
+    const third = ensurePlayer(thirdId);
+
+    first.points += CRAQUE_WEIGHTS.firstUser;
+    first.firstPlaces += 1;
+
+    second.points += CRAQUE_WEIGHTS.secondUser;
+    second.secondPlaces += 1;
+
+    third.points += CRAQUE_WEIGHTS.thirdUser;
+    third.thirdPlaces += 1;
+  }
+
+  return Array.from(ranking.values())
+    .sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      if (b.firstPlaces !== a.firstPlaces) return b.firstPlaces - a.firstPlaces;
+      if (b.secondPlaces !== a.secondPlaces) return b.secondPlaces - a.secondPlaces;
+      if (b.thirdPlaces !== a.thirdPlaces) return b.thirdPlaces - a.thirdPlaces;
+      return a.playerId.localeCompare(b.playerId);
+    })
+    .slice(0, 3)
+    .map((item, index) => ({
+      ...item,
+      position: index + 1
+    }));
+}
+
+function applyFinalCraqueTop3Stats(totals, top3 = []) {
+  for (const item of top3) {
+    const stat = totals.get(toIdString(item.player));
+    if (!stat) continue;
+
+    stat.totalCraquePoints += Number(item.points || 0);
+
+    const position = Number(item.position || 0);
+    if (position === 1) {
+      stat.totalCraqueFirstPlaces += 1;
+    } else if (position === 2) {
+      stat.totalCraqueSecondPlaces += 1;
+    } else if (position === 3) {
+      stat.totalCraqueThirdPlaces += 1;
+    }
+  }
+}
+
 export async function recalculateAllUsersStats() {
   const users = await User.find({}, '_id initialRating').lean();
 
@@ -71,36 +145,15 @@ export async function recalculateAllUsersStats() {
 
     if ((pelada.votingStatus || 'CLOSED') === 'FINISHED') {
       if (pelada.craqueResult?.top3?.length) {
-        for (const item of pelada.craqueResult.top3) {
-          const stat = totals.get(toIdString(item.player));
-          if (!stat) continue;
-
-          stat.totalCraquePoints += Number(item.points || 0);
-          stat.totalCraqueFirstPlaces += Number(item.firstPlaces || 0);
-          stat.totalCraqueSecondPlaces += Number(item.secondPlaces || 0);
-          stat.totalCraqueThirdPlaces += Number(item.thirdPlaces || 0);
-        }
+        applyFinalCraqueTop3Stats(totals, pelada.craqueResult.top3);
       } else {
-        // Compatibilidade com peladas antigas sem snapshot de resultado.
-        for (const craqueVote of pelada.craqueVotes || []) {
-          const firstStat = totals.get(toIdString(craqueVote.firstUser));
-          if (firstStat) {
-            firstStat.totalCraquePoints += 5;
-            firstStat.totalCraqueFirstPlaces += 1;
-          }
-
-          const secondStat = totals.get(toIdString(craqueVote.secondUser));
-          if (secondStat) {
-            secondStat.totalCraquePoints += 3;
-            secondStat.totalCraqueSecondPlaces += 1;
-          }
-
-          const thirdStat = totals.get(toIdString(craqueVote.thirdUser));
-          if (thirdStat) {
-            thirdStat.totalCraquePoints += 1;
-            thirdStat.totalCraqueThirdPlaces += 1;
-          }
-        }
+        // Compatibilidade com rachas antigos sem snapshot: calcula o pódio final a partir dos votos.
+        const legacyTop3 = computeCraqueTop3FromVotes(pelada.craqueVotes || []).map((item) => ({
+          player: item.playerId,
+          points: item.points,
+          position: item.position
+        }));
+        applyFinalCraqueTop3Stats(totals, legacyTop3);
       }
     }
 

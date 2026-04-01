@@ -50,7 +50,7 @@
     <div class="podium-panel-header">
       <div>
         <h2 class="panel-title">Pódios da temporada</h2>
-        <p class="muted">Visão rápida dos destaques em gols, assistências e títulos de torneio.</p>
+        <p class="muted">Destaques de gols, assistências, títulos, vitórias e presença no craque do racha.</p>
       </div>
     </div>
 
@@ -74,22 +74,29 @@
               @for (slot of category.slots; track $index) {
                 <div
                   class="podium-column"
-                  [class.rank-1]="slot?.rank === 1"
-                  [class.rank-2]="slot?.rank === 2"
-                  [class.rank-3]="slot?.rank === 3"
-                  [class.is-empty]="!slot"
+                  [class.rank-1]="slot.rank === 1"
+                  [class.rank-2]="slot.rank === 2"
+                  [class.rank-3]="slot.rank === 3"
+                  [class.is-empty]="slot.entries.length === 0"
                 >
-                  @if (slot) {
-                    <div class="podium-player-chip">
-                      <span class="podium-player-avatar">
-                        @if (slot.profileImageUrl) {
-                          <img [src]="slot.profileImageUrl" alt="Foto de {{ slot.userName | playerName }}" />
-                        } @else {
-                          <mat-icon>person</mat-icon>
-                        }
-                      </span>
-                      <strong class="podium-player-name">{{ slot.userName | playerName }}</strong>
-                      <span class="podium-player-score">{{ slot.value }} {{ category.unit }}</span>
+                  @if (slot.entries.length > 0) {
+                    <div class="podium-chip-list">
+                      @for (entry of slot.entries; track entry.userId) {
+                        <div class="podium-player-chip">
+                          <span class="podium-player-avatar">
+                            @if (entry.profileImageUrl) {
+                              <img [src]="entry.profileImageUrl" alt="Foto de {{ entry.userName | playerName }}" />
+                            } @else {
+                              <mat-icon>person</mat-icon>
+                            }
+                          </span>
+                          <strong class="podium-player-name">{{ entry.userName | playerName }}</strong>
+                          <span class="podium-player-score">{{ entry.value }} {{ category.unit }}</span>
+                          @if (entry.secondaryLabel) {
+                            <span class="podium-player-subscore">{{ entry.secondaryLabel }}</span>
+                          }
+                        </div>
+                      }
                     </div>
                     <div class="podium-pedestal">
                       <span class="podium-position">{{ slot.rank }}º</span>
@@ -125,23 +132,35 @@
             <p class="muted">{{ card.subtitle }}</p>
           </header>
 
-          @if (card.players.length === 0) {
+          @if (!hasPlayersInPositionCard(card)) {
             <p class="muted podium-empty-state">Ainda sem jogadores suficientes nesta posição.</p>
           } @else {
-            <div class="position-podium-list">
-              @for (player of card.players; track player.id; let index = $index) {
-                <div class="position-podium-row">
-                  <span class="position-rank-badge">{{ index + 1 }}º</span>
-                  <span class="position-avatar">
-                    @if (player.profileImageUrl) {
-                      <img [src]="player.profileImageUrl" alt="Foto de {{ player.name | playerName }}" />
+            <div class="position-rank-list">
+              @for (group of card.rankGroups; track group.rank) {
+                <div class="position-rank-row" [class.is-empty]="group.players.length === 0">
+                  <span class="position-rank-badge">{{ group.rank }}º</span>
+                  <div class="position-rank-content">
+                    @if (group.players.length === 0) {
+                      <span class="muted position-empty">Sem jogador</span>
                     } @else {
-                      <mat-icon>person</mat-icon>
+                      <div class="position-player-list">
+                        @for (player of group.players; track player.id) {
+                          <div class="position-player-chip">
+                            <span class="position-avatar">
+                              @if (player.profileImageUrl) {
+                                <img [src]="player.profileImageUrl" alt="Foto de {{ player.name | playerName }}" />
+                              } @else {
+                                <mat-icon>person</mat-icon>
+                              }
+                            </span>
+                            <div class="position-player-content">
+                              <strong>{{ player.name | playerName }}</strong>
+                              <small class="muted">&#64;{{ player.username }}</small>
+                            </div>
+                          </div>
+                        }
+                      </div>
                     }
-                  </span>
-                  <div class="position-player-content">
-                    <strong>{{ player.name | playerName }}</strong>
-                    <small class="muted">&#64;{{ player.username }}</small>
                   </div>
                 </div>
               }

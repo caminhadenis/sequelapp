@@ -19,32 +19,63 @@ function totalGames(user) {
   );
 }
 
-function topThreeByPosition(users = [], position) {
-  return users
+function buildTopRankingByPosition(users = [], position) {
+  const sorted = users
     .filter((user) => user.position === position)
+    .map((user) => ({
+      user,
+      rating: Number(user.ratingAverage || 0),
+      games: totalGames(user)
+    }))
     .sort((a, b) => {
-      const ratingDiff = Number(b.ratingAverage || 0) - Number(a.ratingAverage || 0);
+      const ratingDiff = b.rating - a.rating;
       if (ratingDiff !== 0) {
         return ratingDiff;
       }
 
       // Desempate para "melhor por posicao": mais jogos primeiro.
-      const gamesDiff = totalGames(b) - totalGames(a);
+      const gamesDiff = b.games - a.games;
       if (gamesDiff !== 0) {
         return gamesDiff;
       }
 
-      return String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR');
-    })
-    .slice(0, 3)
-    .map((user) => ({
-      id: String(user._id),
-      name: user.name,
-      username: user.username,
-      position: user.position,
-      profileImageUrl: user.profileImageUrl || null,
-      games: totalGames(user)
-    }));
+      return String(a.user.name || '').localeCompare(String(b.user.name || ''), 'pt-BR');
+    });
+
+  const ranking = [];
+  let previous = null;
+
+  for (let index = 0; index < sorted.length; index += 1) {
+    const item = sorted[index];
+    let rank = 1;
+
+    if (previous) {
+      const isTie = item.rating === previous.rating && item.games === previous.games;
+      rank = isTie ? previous.rank : previous.rank + 1;
+    }
+
+    if (rank > 3) {
+      break;
+    }
+
+    ranking.push({
+      id: String(item.user._id),
+      name: item.user.name,
+      username: item.user.username,
+      position: item.user.position,
+      profileImageUrl: item.user.profileImageUrl || null,
+      games: item.games,
+      rank
+    });
+
+    previous = {
+      rating: item.rating,
+      games: item.games,
+      rank
+    };
+  }
+
+  return ranking;
 }
 
 function parsePushSubscription(input) {
@@ -373,9 +404,9 @@ export async function userRoutes(fastify) {
       ).lean();
 
       return {
-        zagueiro: topThreeByPosition(users, 'ZAGUEIRO'),
-        meia: topThreeByPosition(users, 'MEIA'),
-        atacante: topThreeByPosition(users, 'ATACANTE')
+        zagueiro: buildTopRankingByPosition(users, 'ZAGUEIRO'),
+        meia: buildTopRankingByPosition(users, 'MEIA'),
+        atacante: buildTopRankingByPosition(users, 'ATACANTE')
       };
     }
   );

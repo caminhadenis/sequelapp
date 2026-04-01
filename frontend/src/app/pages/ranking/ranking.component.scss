@@ -94,20 +94,24 @@
   font-size: 0.8rem;
 }
 
-.position-podium-list {
+.position-rank-list {
   display: grid;
   gap: 8px;
 }
 
-.position-podium-row {
+.position-rank-row {
   border: 1px solid #e7d8fb;
   border-radius: 10px;
   padding: 8px;
   background: #fff;
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 8px;
   align-items: center;
+}
+
+.position-rank-row.is-empty {
+  border-style: dashed;
 }
 
 .position-rank-badge {
@@ -120,6 +124,30 @@
   font-weight: 700;
   color: #fff;
   background: linear-gradient(135deg, #7c3aed, #f97316);
+}
+
+.position-rank-content {
+  min-width: 0;
+}
+
+.position-player-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+
+.position-player-chip {
+  min-width: 0;
+  flex: 1 1 168px;
+  border: 1px solid #ecd8ff;
+  border-radius: 10px;
+  background: linear-gradient(155deg, #fff, #fff8f3);
+  padding: 7px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
 }
 
 .position-avatar {
@@ -147,6 +175,11 @@
   color: #7c3aed;
 }
 
+.position-empty {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
 .position-player-content {
   min-width: 0;
   display: grid;
@@ -165,7 +198,7 @@
 
 .podium-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 12px;
 }
 
@@ -233,9 +266,18 @@
   gap: 8px;
 }
 
-.podium-player-chip {
+.podium-chip-list {
   width: 100%;
-  max-width: 152px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.podium-player-chip {
+  width: 132px;
+  max-width: 100%;
   border-radius: 10px;
   border: 1px solid rgba(107, 33, 168, 0.18);
   background: rgba(255, 255, 255, 0.94);
@@ -289,6 +331,12 @@
   font-size: 0.72rem;
   font-weight: 700;
   color: #b45309;
+}
+
+.podium-player-subscore {
+  font-size: 0.66rem;
+  color: #6b21a8;
+  line-height: 1.2;
 }
 
 .podium-pedestal {
@@ -414,7 +462,7 @@
   }
 
   .podium-player-chip {
-    max-width: 120px;
+    width: 116px;
     padding: 5px 6px;
   }
 
@@ -424,6 +472,14 @@
 
   .podium-player-score {
     font-size: 0.68rem;
+  }
+
+  .podium-player-subscore {
+    font-size: 0.62rem;
+  }
+
+  .position-player-chip {
+    flex-basis: 100%;
   }
 
   .podium-pedestal {
