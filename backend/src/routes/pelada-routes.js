@@ -19,6 +19,14 @@ const CRAQUE_WEIGHTS = {
 };
 const PRESENCE_LIMIT = 20;
 
+function isHalfStepScore(value) {
+  if (!Number.isFinite(value) || value < 0.5 || value > 5) {
+    return false;
+  }
+
+  return Math.abs(value * 2 - Math.round(value * 2)) < 1e-9;
+}
+
 function formatPeladaSummary(pelada) {
   const date = new Date(pelada.date);
   return {
@@ -334,8 +342,8 @@ export async function peladaRoutes(fastify) {
   fastify.get('/:id', { preHandler: [authenticate] }, async (request, reply) => {
     const canSeeRatings = canRequesterSeeRatings(request.user);
     const teamPlayerProjection = canSeeRatings
-      ? 'name username role ratingAverage position profileImageUrl'
-      : 'name username role position profileImageUrl';
+      ? 'name username role ratingAverage position stamina profileImageUrl'
+      : 'name username role position stamina profileImageUrl';
 
     const pelada = await Pelada.findById(request.params.id)
       .populate('teams.players', teamPlayerProjection)
@@ -382,7 +390,8 @@ export async function peladaRoutes(fastify) {
           role: player.role,
           profileImageUrl: player.profileImageUrl || null,
           ...(canSeeRatings ? { ratingAverage: player.ratingAverage } : {}),
-          position: player.position
+          position: player.position,
+          stamina: player.stamina || 'MEDIA'
         }))
       })),
       playerStats: (pelada.playerStats || []).map((stat) => ({
@@ -428,6 +437,7 @@ export async function peladaRoutes(fastify) {
       }
 
       const validPositions = new Set(['ZAGUEIRO', 'MEIA', 'ATACANTE']);
+      const validStaminas = new Set(['BAIXA', 'MEDIA', 'ALTA']);
       let normalizedGuestPlayers = [];
       try {
         normalizedGuestPlayers = (guestPlayers || []).map((guest, index) => {
@@ -436,6 +446,9 @@ export async function peladaRoutes(fastify) {
             .replace(/\s+/g, ' ');
           const guestRating = Number(guest?.rating);
           const normalizedPosition = String(guest?.position || '')
+            .trim()
+            .toUpperCase();
+          const normalizedStamina = String(guest?.stamina || 'MEDIA')
             .trim()
             .toUpperCase();
 
@@ -450,12 +463,16 @@ export async function peladaRoutes(fastify) {
               `A posição do convidado ${guestName} é inválida. Use ZAGUEIRO, MEIA ou ATACANTE.`
             );
           }
+          if (!validStaminas.has(normalizedStamina)) {
+            throw new Error(`A stamina do convidado ${guestName} é inválida. Use BAIXA, MEDIA ou ALTA.`);
+          }
 
           return {
             id: `guest-${index + 1}-${Date.now()}`,
             name: guestName,
             rating: Number(guestRating.toFixed(2)),
             position: normalizedPosition || null,
+            stamina: normalizedStamina,
             isGuest: true
           };
         });
@@ -481,7 +498,7 @@ export async function peladaRoutes(fastify) {
           role: 'JOGADOR',
           $or: [{ approvalStatus: 'APPROVED' }, { approvalStatus: { $exists: false } }]
         },
-        'name ratingAverage initialRating position'
+        'name ratingAverage initialRating position stamina'
       ).lean();
 
       if (players.length !== uniquePlayerIds.length) {
@@ -503,6 +520,7 @@ export async function peladaRoutes(fastify) {
               ? Number(player.ratingAverage)
               : Number(player.initialRating || 3),
           position: player.position || null,
+          stamina: player.stamina || 'MEDIA',
           isGuest: false
         }));
 
@@ -669,10 +687,14 @@ export async function peladaRoutes(fastify) {
         const draws = Number(item.draws || 0);
         const losses = Number(item.losses || 0);
 
-        if ([wins, draws, losses].some((value) => Number.isNaN(value) || value < 0)) {
+        if (
+          [wins, draws, losses].some(
+            (value) => Number.isNaN(value) || !Number.isInteger(value) || value < 0 || value > 10
+          )
+        ) {
           return reply
             .code(400)
-            .send({ message: 'Vitorias, empates e derrotas devem ser numeros >= 0.' });
+            .send({ message: 'Vitorias, empates e derrotas devem ser inteiros entre 0 e 10.' });
         }
 
         resultMap.set(String(item.teamId), { wins, draws, losses });
@@ -805,8 +827,14 @@ export async function peladaRoutes(fastify) {
             .send({ message: 'Um jogador nao pode ter estatistica duplicada na mesma pelada.' });
         }
 
-        if ([goals, assists].some((value) => Number.isNaN(value) || value < 0)) {
-          return reply.code(400).send({ message: 'Gols e assistencias devem ser numeros >= 0.' });
+        if (
+          [goals, assists].some(
+            (value) => Number.isNaN(value) || !Number.isInteger(value) || value < 0 || value > 15
+          )
+        ) {
+          return reply
+            .code(400)
+            .send({ message: 'Gols e assistencias devem ser numeros inteiros entre 0 e 15.' });
         }
 
         seen.add(playerId);
@@ -1088,10 +1116,10 @@ export async function peladaRoutes(fastify) {
     const fromUserId = String(request.user.id);
 
     const numericScore = Number(score);
-    if (!toUserId || Number.isNaN(numericScore) || numericScore < 1 || numericScore > 5) {
+    if (!toUserId || !isHalfStepScore(numericScore)) {
       return reply
         .code(400)
-        .send({ message: 'Informe toUserId e score valido entre 1 e 5.' });
+        .send({ message: 'Informe toUserId e score valido entre 0.5 e 5.0 (passo 0.5).' });
     }
 
     const pelada = await Pelada.findById(request.params.id);
@@ -1263,10 +1291,10 @@ export async function peladaRoutes(fastify) {
       const { fromUserId, toUserId, score } = request.body || {};
       const numericScore = Number(score);
 
-      if (!fromUserId || !toUserId || Number.isNaN(numericScore) || numericScore < 1 || numericScore > 5) {
+      if (!fromUserId || !toUserId || !isHalfStepScore(numericScore)) {
         return reply
           .code(400)
-          .send({ message: 'Informe fromUserId, toUserId e score valido entre 1 e 5.' });
+          .send({ message: 'Informe fromUserId, toUserId e score valido entre 0.5 e 5.0 (passo 0.5).' });
       }
 
       const pelada = await Pelada.findById(request.params.id);

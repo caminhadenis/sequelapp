@@ -6,6 +6,7 @@ import {
   PeladaDetail,
   PeladaSummary,
   PlayerPosition,
+  PlayerStamina,
   RatingCardsResponse,
   TeamsDrawResponse,
   VoteDetailsResponse
@@ -72,6 +73,7 @@ export class PeladaService {
         name: string;
         rating: number;
         position?: PlayerPosition | null;
+        stamina?: PlayerStamina;
       }>;
     }
   ): Observable<TeamsDrawResponse> {

@@ -5,6 +5,7 @@ import { environment } from '../../../environments/environment';
 import {
   PendingApprovalUser,
   PlayerPosition,
+  PlayerStamina,
   PositionRankingResponse,
   User
 } from '../../models/user';
@@ -35,6 +36,10 @@ export class UserService {
     return this.http.get<User>(`${this.apiUrl}/users/me`);
   }
 
+  getUserById(userId: string): Observable<User> {
+    return this.http.get<User>(`${this.apiUrl}/users/${userId}`);
+  }
+
   approveUser(userId: string): Observable<{ message: string; user: User }> {
     return this.http.patch<{ message: string; user: User }>(`${this.apiUrl}/users/${userId}/approve`, {});
   }
@@ -49,6 +54,26 @@ export class UserService {
     return this.http.patch<{ message: string; user: User }>(`${this.apiUrl}/users/me/position`, {
       position
     });
+  }
+
+  updateMyFieldProfile(payload: {
+    position?: PlayerPosition;
+    stamina?: PlayerStamina;
+  }): Observable<{ message: string; user: User }> {
+    return this.http.patch<{ message: string; user: User }>(`${this.apiUrl}/users/me/field-profile`, payload);
+  }
+
+  adminUpdatePlayerFieldProfile(
+    userId: string,
+    payload: {
+      position?: PlayerPosition;
+      stamina?: PlayerStamina;
+    }
+  ): Observable<{ message: string; user: User }> {
+    return this.http.patch<{ message: string; user: User }>(
+      `${this.apiUrl}/users/${userId}/field-profile`,
+      payload
+    );
   }
 
   updateMyProfile(payload: {

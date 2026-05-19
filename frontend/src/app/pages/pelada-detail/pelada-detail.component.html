@@ -35,7 +35,37 @@
       </div>
     </section>
 
-    <section class="panel presence-panel">
+    <section class="panel workspace-nav">
+      <div class="workspace-nav-header">
+        <h3>Navegação rápida</h3>
+        <p class="muted">Acesse direto as ações principais deste racha.</p>
+      </div>
+
+      <div class="workspace-nav-mobile">
+        <mat-form-field appearance="outline" class="workspace-nav-select">
+          <mat-label>Ir para</mat-label>
+          <mat-select
+            [value]="mobileQuickNavSelection"
+            (valueChange)="onQuickNavSelectionChange($event)"
+          >
+            @for (shortcut of quickNavShortcuts; track shortcut.id) {
+              <mat-option [value]="shortcut.id">{{ shortcut.label }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+      </div>
+
+      <div class="workspace-nav-actions">
+        @for (shortcut of quickNavShortcuts; track shortcut.id) {
+          <button mat-stroked-button type="button" (click)="goToSection(shortcut.id)">
+            <mat-icon>{{ shortcut.icon }}</mat-icon>
+            {{ shortcut.label }}
+          </button>
+        }
+      </div>
+    </section>
+
+    <section id="presence-section" class="panel presence-panel section-anchor">
       <div class="presence-header">
         <div>
           <h2 class="panel-title">Confirmação de presença</h2>
@@ -166,7 +196,7 @@
       }
     </section>
 
-    <section class="panel">
+    <section id="teams-section" class="panel section-anchor">
       <div class="teams-section-header">
         <h2 class="panel-title">Times do racha</h2>
         @if (pelada.teams.length > 0) {
@@ -187,8 +217,19 @@
           <mat-card class="team-card">
             <mat-card-header>
               <mat-card-title>{{ team.name }}</mat-card-title>
-              <mat-card-subtitle>
-                {{ team.wins }}V / {{ team.draws }}E / {{ team.losses }}D
+              <mat-card-subtitle class="team-record">
+                <span class="team-record-pill wins">
+                  <strong>{{ team.wins }}</strong>
+                  <small>V</small>
+                </span>
+                <span class="team-record-pill draws">
+                  <strong>{{ team.draws }}</strong>
+                  <small>E</small>
+                </span>
+                <span class="team-record-pill losses">
+                  <strong>{{ team.losses }}</strong>
+                  <small>D</small>
+                </span>
               </mat-card-subtitle>
             </mat-card-header>
             <mat-card-content>
@@ -287,7 +328,7 @@
     </section>
 
     @if (isTournament) {
-      <section class="panel tournament-panel">
+      <section id="tournament-section" class="panel tournament-panel section-anchor">
         <h2 class="panel-title">Torneio: partidas e tabela do grupo</h2>
         <div class="tournament-layout">
           <section class="panel fixture-panel">
@@ -406,7 +447,7 @@
     }
 
     @if (authService.isAdmin) {
-      <section class="panel">
+      <section id="admin-management-section" class="panel section-anchor">
         <h2 class="panel-title">Configurar times (até 4 times)</h2>
         <p class="muted">
           Você pode salvar entre 1 e 4 times. Cada time pode ter até 5 jogadores somando cadastrados e convidados.
@@ -477,6 +518,15 @@
                 </mat-select>
               </mat-form-field>
 
+              <mat-form-field appearance="outline" class="draw-guest-stamina-field">
+                <mat-label>Stamina</mat-label>
+                <mat-select formControlName="guestStaminaDraft">
+                  @for (staminaOption of guestStaminaOptions; track staminaOption.value) {
+                    <mat-option [value]="staminaOption.value">{{ staminaOption.label }}</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+
               <mat-form-field appearance="outline" class="draw-guest-rating-field">
                 <mat-label>Nota média (1-5)</mat-label>
                 <input matInput type="number" min="1" max="5" step="0.1" formControlName="guestRatingDraft" />
@@ -503,7 +553,7 @@
                       [removable]="!actionLoading && !isConcluded"
                       (removed)="removeDrawRegisteredPlayer(player.id)"
                     >
-                      {{ player.name }} • {{ player.position }} • nota {{ player.rating }}
+                      {{ player.name }} • {{ player.position }} • stamina {{ player.stamina }} • nota {{ player.rating }}
                       <button matChipRemove [attr.aria-label]="'Remover jogador ' + player.name">
                         <mat-icon>close</mat-icon>
                       </button>
@@ -572,6 +622,10 @@
                     <small>
                       {{ team.positionCounts.ZAGUEIRO }} ZAG · {{ team.positionCounts.MEIA }} MEI ·
                       {{ team.positionCounts.ATACANTE }} ATA
+                    </small>
+                    <small>
+                      {{ team.staminaCounts.BAIXA }} baixa · {{ team.staminaCounts.MEDIA }} média ·
+                      {{ team.staminaCounts.ALTA }} alta
                     </small>
                     <small class="muted">{{ drawTeamPlayersPreview(team) }}</small>
                   </div>
@@ -705,7 +759,7 @@
       </section>
 
       @if (!isTournament) {
-        <section class="panel">
+        <section id="results-section" class="panel section-anchor">
           <h2 class="panel-title">Resultados por time</h2>
 
           <form [formGroup]="resultsForm" (ngSubmit)="saveResults()" class="results-form">
@@ -717,17 +771,29 @@
                   <div class="number-input-grid result-number-grid">
                     <mat-form-field appearance="outline" class="digit-field result-digit-field">
                       <mat-label>Vit.</mat-label>
-                      <input matInput type="number" min="0" formControlName="wins" />
+                      <mat-select formControlName="wins">
+                        @for (value of resultsValueOptions; track value) {
+                          <mat-option [value]="value">{{ value }}</mat-option>
+                        }
+                      </mat-select>
                     </mat-form-field>
 
                     <mat-form-field appearance="outline" class="digit-field result-digit-field">
                       <mat-label>Emp.</mat-label>
-                      <input matInput type="number" min="0" formControlName="draws" />
+                      <mat-select formControlName="draws">
+                        @for (value of resultsValueOptions; track value) {
+                          <mat-option [value]="value">{{ value }}</mat-option>
+                        }
+                      </mat-select>
                     </mat-form-field>
 
                     <mat-form-field appearance="outline" class="digit-field result-digit-field">
                       <mat-label>Der.</mat-label>
-                      <input matInput type="number" min="0" formControlName="losses" />
+                      <mat-select formControlName="losses">
+                        @for (value of resultsValueOptions; track value) {
+                          <mat-option [value]="value">{{ value }}</mat-option>
+                        }
+                      </mat-select>
                     </mat-form-field>
                   </div>
                 </div>
@@ -742,7 +808,7 @@
           </form>
         </section>
       } @else {
-        <section class="panel">
+        <section id="results-section" class="panel section-anchor">
           <h2 class="panel-title">Resultados por time</h2>
           <p class="muted">
             Neste racha do tipo torneio, vitórias/empates/derrotas são calculados automaticamente pelos
@@ -751,7 +817,7 @@
         </section>
       }
 
-      <section class="panel">
+      <section id="stats-section" class="panel section-anchor">
         <h2 class="panel-title">Gols e assistências por jogador</h2>
 
         <div class="stats-toolbar">
@@ -796,12 +862,20 @@
                 <div class="number-input-grid stats-number-grid">
                   <mat-form-field appearance="outline" class="digit-field stats-digit-field">
                     <mat-label>Gols</mat-label>
-                    <input matInput type="number" min="0" formControlName="goals" />
+                    <mat-select formControlName="goals">
+                      @for (value of statsValueOptions; track value) {
+                        <mat-option [value]="value">{{ value }}</mat-option>
+                      }
+                    </mat-select>
                   </mat-form-field>
 
                   <mat-form-field appearance="outline" class="digit-field stats-digit-field">
                     <mat-label>Assist.</mat-label>
-                    <input matInput type="number" min="0" formControlName="assists" />
+                    <mat-select formControlName="assists">
+                      @for (value of statsValueOptions; track value) {
+                        <mat-option [value]="value">{{ value }}</mat-option>
+                      }
+                    </mat-select>
                   </mat-form-field>
                 </div>
               </div>
@@ -831,7 +905,7 @@
       </section>
     }
 
-    <section class="panel">
+    <section id="voting-section" class="panel section-anchor">
       <div class="vote-title-row">
         <h2 class="panel-title">Notas dos jogadores</h2>
         @if (authService.isAdmin) {
@@ -1071,7 +1145,7 @@
                         (click)="selectFlowScore(score)"
                         [disabled]="actionLoading || ratingFlowAnimating || isConcluded"
                       >
-                        {{ score }}
+                        {{ formatRatingScore(score) }}
                       </button>
                     }
                   </div>
@@ -1145,16 +1219,14 @@
                 @if (card.canVote) {
                   <div class="vote-form">
                     <mat-form-field appearance="outline">
-                      <mat-label>Nota (1 a 5)</mat-label>
+                      <mat-label>Nota (0,5 a 5,0)</mat-label>
                       <mat-select
                         [value]="voteSelections[card.playerId]"
                         (valueChange)="voteSelections[card.playerId] = $event"
                       >
-                        <mat-option [value]="1">1</mat-option>
-                        <mat-option [value]="2">2</mat-option>
-                        <mat-option [value]="3">3</mat-option>
-                        <mat-option [value]="4">4</mat-option>
-                        <mat-option [value]="5">5</mat-option>
+                        @for (score of quickScoreOptions; track score) {
+                          <mat-option [value]="score">{{ formatRatingScore(score) }}</mat-option>
+                        }
                       </mat-select>
                     </mat-form-field>
 
@@ -1176,7 +1248,7 @@
     </section>
 
     @if (authService.isAdmin) {
-      <section class="panel">
+      <section id="audit-section" class="panel section-anchor">
         <h2 class="panel-title">Auditoria de notas (ADM)</h2>
         <p class="muted">Clique no jogador para abrir a lista detalhada de quem votou e corrigir notas.</p>
 
@@ -1206,11 +1278,9 @@
                           [value]="adminVoteSelections[voteEditKey(vote)]"
                           (valueChange)="adminVoteSelections[voteEditKey(vote)] = $event"
                         >
-                          <mat-option [value]="1">1</mat-option>
-                          <mat-option [value]="2">2</mat-option>
-                          <mat-option [value]="3">3</mat-option>
-                          <mat-option [value]="4">4</mat-option>
-                          <mat-option [value]="5">5</mat-option>
+                          @for (score of quickScoreOptions; track score) {
+                            <mat-option [value]="score">{{ formatRatingScore(score) }}</mat-option>
+                          }
                         </mat-select>
                       </mat-form-field>
                       <button

@@ -9,6 +9,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
+import { RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
 import { UserService } from '../../core/services/user.service';
@@ -70,6 +71,7 @@ interface PositionPodiumCard {
     MatSelectModule,
     MatSnackBarModule,
     MatProgressBarModule,
+    RouterLink,
     PlayerNamePipe
   ],
   templateUrl: './ranking.component.html',
@@ -109,7 +111,7 @@ export class RankingComponent implements OnInit {
 
   get displayedColumns(): string[] {
     if (this.authService.isAdmin) {
-      return [...this.baseDisplayedColumns, 'ratingAverage'];
+      return [...this.baseDisplayedColumns, 'ratingAverage', 'actions'];
     }
     return this.baseDisplayedColumns;
   }
@@ -346,26 +348,40 @@ export class RankingComponent implements OnInit {
   }
 
   private buildPositionPodiumCards(byPosition: PositionRankingResponse): PositionPodiumCard[] {
+    const subtitle = this.positionPodiumSubtitle(byPosition);
+
     return [
       {
         key: 'ZAGUEIRO',
         title: 'Melhores Zagueiros',
-        subtitle: 'Top 3 por nota média (desempate: mais rachas)',
+        subtitle,
         rankGroups: this.buildPositionRankGroups(this.normalizePositionEntries(byPosition.zagueiro || []))
       },
       {
         key: 'MEIA',
         title: 'Melhores Meias',
-        subtitle: 'Top 3 por nota média (desempate: mais rachas)',
+        subtitle,
         rankGroups: this.buildPositionRankGroups(this.normalizePositionEntries(byPosition.meia || []))
       },
       {
         key: 'ATACANTE',
         title: 'Melhores Atacantes',
-        subtitle: 'Top 3 por nota média (desempate: mais rachas)',
+        subtitle,
         rankGroups: this.buildPositionRankGroups(this.normalizePositionEntries(byPosition.atacante || []))
       }
     ];
+  }
+
+  private positionPodiumSubtitle(byPosition: PositionRankingResponse): string {
+    const totalHappenedRachas = Number(byPosition?.totalHappenedRachas || 0);
+    const minimumGames = Number(byPosition?.minimumGames || 0);
+
+    if (totalHappenedRachas <= 0 || minimumGames <= 0) {
+      return 'Top 3 por nota média (desempate: mais rachas)';
+    }
+
+    const rachaLabel = minimumGames === 1 ? 'racha' : 'rachas';
+    return `Top 3 por nota média (mínimo ${minimumGames} ${rachaLabel} = 25% de ${totalHappenedRachas})`;
   }
 
   private buildPositionRankGroups(entries: PositionRankingEntry[]): PositionPodiumRankGroup[] {

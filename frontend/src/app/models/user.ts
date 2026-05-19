@@ -1,6 +1,7 @@
 export type UserRole = 'ADM' | 'JOGADOR';
 export type ApprovalStatus = 'PENDING' | 'APPROVED';
 export type PlayerPosition = 'ZAGUEIRO' | 'MEIA' | 'ATACANTE';
+export type PlayerStamina = 'BAIXA' | 'MEDIA' | 'ALTA';
 
 export interface User {
   id: string;
@@ -9,6 +10,7 @@ export interface User {
   username: string;
   role: UserRole;
   position?: PlayerPosition;
+  stamina?: PlayerStamina;
   approvalStatus?: ApprovalStatus;
   createdAt?: string;
   initialRating?: number | null;
@@ -18,6 +20,7 @@ export interface User {
   totalWins: number;
   totalDraws: number;
   totalLosses: number;
+  totalRachas?: number;
   totalCraquePoints: number;
   totalCraqueFirstPlaces: number;
   totalCraqueSecondPlaces: number;
@@ -45,6 +48,8 @@ export interface PositionRankingEntry {
 }
 
 export interface PositionRankingResponse {
+  totalHappenedRachas?: number;
+  minimumGames?: number;
   zagueiro: PositionRankingEntry[];
   meia: PositionRankingEntry[];
   atacante: PositionRankingEntry[];

@@ -244,6 +244,15 @@
             <th mat-header-cell *matHeaderCellDef>Nota</th>
             <td mat-cell *matCellDef="let user">{{ user.ratingAverage | number : '1.1-2' }}</td>
           </ng-container>
+
+          <ng-container matColumnDef="actions">
+            <th mat-header-cell *matHeaderCellDef>Ações</th>
+            <td mat-cell *matCellDef="let user">
+              <a mat-stroked-button color="primary" [routerLink]="'/jogadores/' + user.id">
+                Perfil campo
+              </a>
+            </td>
+          </ng-container>
         }
 
         <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
@@ -269,6 +278,11 @@
             <span>Emp.: <strong>{{ user.totalDraws }}</strong></span>
             <span>Der.: <strong>{{ user.totalLosses }}</strong></span>
           </div>
+          @if (authService.isAdmin) {
+            <a mat-stroked-button color="primary" class="mobile-player-action" [routerLink]="'/jogadores/' + user.id">
+              Editar perfil em campo
+            </a>
+          }
         </article>
       }
     </div>

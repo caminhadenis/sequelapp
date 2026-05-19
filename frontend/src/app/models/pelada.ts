@@ -2,6 +2,7 @@ export type VotingStatus = 'CLOSED' | 'OPEN' | 'FINISHED';
 export type RachaStatus = 'OPEN' | 'CONCLUDED';
 export type RachaType = 'NORMAL' | 'TOURNAMENT';
 export type PlayerPosition = 'ZAGUEIRO' | 'MEIA' | 'ATACANTE';
+export type PlayerStamina = 'BAIXA' | 'MEDIA' | 'ALTA';
 
 export interface PeladaSummary {
   id: string;
@@ -20,6 +21,7 @@ export interface PeladaPlayer {
   role: 'ADM' | 'JOGADOR';
   profileImageUrl?: string | null;
   position?: PlayerPosition;
+  stamina?: PlayerStamina;
   ratingAverage?: number | null;
 }
 
@@ -187,6 +189,7 @@ export interface DrawTeamPlayer {
   id: string;
   name: string;
   position: PlayerPosition | null;
+  stamina?: PlayerStamina;
   isGuest?: boolean;
   rating?: number;
 }
@@ -202,6 +205,11 @@ export interface DrawTeamResult {
     ATACANTE: number;
     FLEX: number;
   };
+  staminaCounts: {
+    BAIXA: number;
+    MEDIA: number;
+    ALTA: number;
+  };
 }
 
 export interface TeamsDrawResponse {
@@ -213,5 +221,9 @@ export interface TeamsDrawResponse {
     minAverageRating: number;
     maxAverageRating: number;
     spread: number;
+    staminaSpread?: {
+      high: number;
+      low: number;
+    };
   };
 }

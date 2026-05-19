@@ -11,7 +11,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { AuthService } from '../../core/services/auth.service';
 import { UserService } from '../../core/services/user.service';
-import { PlayerPosition, User } from '../../models/user';
+import { PlayerPosition, PlayerStamina, User } from '../../models/user';
 import { PlayerNamePipe } from '../../shared/pipes/player-name.pipe';
 import { toAbsoluteProfileImageUrl } from '../../shared/utils/profile-image';
 
@@ -46,6 +46,11 @@ export class ProfileComponent implements OnInit {
     { value: 'MEIA', label: 'Meia' },
     { value: 'ATACANTE', label: 'Atacante' }
   ];
+  readonly playerStaminaOptions: Array<{ value: PlayerStamina; label: string }> = [
+    { value: 'BAIXA', label: 'Baixa' },
+    { value: 'MEDIA', label: 'Média' },
+    { value: 'ALTA', label: 'Alta' }
+  ];
 
   private profileImageDataUrl: string | null | undefined;
   private readonly profileImageMaxBytes = 2 * 1024 * 1024;
@@ -56,7 +61,8 @@ export class ProfileComponent implements OnInit {
   });
 
   readonly positionForm = this.formBuilder.group({
-    position: ['', Validators.required]
+    position: ['', Validators.required],
+    stamina: ['MEDIA', Validators.required]
   });
 
   constructor(
@@ -177,28 +183,33 @@ export class ProfileComponent implements OnInit {
       return;
     }
 
-    const { position } = this.positionForm.getRawValue();
-    if (!position) {
+    const { position, stamina } = this.positionForm.getRawValue();
+    if (!position || !stamina) {
       return;
     }
 
     this.positionLoading = true;
-    this.userService.updateMyPosition(position as PlayerPosition).subscribe({
-      next: (response) => {
-        this.positionLoading = false;
-        this.applyUser(response.user);
-        this.authService.syncCurrentUser(response.user);
-        this.snackBar.open(response.message || 'Posição atualizada com sucesso.', 'Fechar', {
-          duration: 2600
-        });
-      },
-      error: (error) => {
-        this.positionLoading = false;
-        this.snackBar.open(error?.error?.message || 'Falha ao atualizar posição.', 'Fechar', {
-          duration: 3000
-        });
-      }
-    });
+    this.userService
+      .updateMyFieldProfile({
+        position: position as PlayerPosition,
+        stamina: stamina as PlayerStamina
+      })
+      .subscribe({
+        next: (response) => {
+          this.positionLoading = false;
+          this.applyUser(response.user);
+          this.authService.syncCurrentUser(response.user);
+          this.snackBar.open(response.message || 'Perfil em campo atualizado com sucesso.', 'Fechar', {
+            duration: 2600
+          });
+        },
+        error: (error) => {
+          this.positionLoading = false;
+          this.snackBar.open(error?.error?.message || 'Falha ao atualizar perfil em campo.', 'Fechar', {
+            duration: 3000
+          });
+        }
+      });
   }
 
   playerPositionLabel(position?: PlayerPosition): string {
@@ -206,6 +217,13 @@ export class ProfileComponent implements OnInit {
     if (position === 'MEIA') return 'Meia';
     if (position === 'ATACANTE') return 'Atacante';
     return 'Não definida';
+  }
+
+  playerStaminaLabel(stamina?: PlayerStamina): string {
+    if (stamina === 'BAIXA') return 'Baixa';
+    if (stamina === 'MEDIA') return 'Média';
+    if (stamina === 'ALTA') return 'Alta';
+    return 'Média';
   }
 
   totalMatches(summary: User | null): number {
@@ -242,7 +260,8 @@ export class ProfileComponent implements OnInit {
 
     this.positionForm.patchValue(
       {
-        position: user.position || ''
+        position: user.position || '',
+        stamina: user.stamina || 'MEDIA'
       },
       { emitEvent: false }
     );

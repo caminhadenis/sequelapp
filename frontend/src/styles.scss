@@ -165,3 +165,172 @@ body {
     width: 100%;
   }
 }
+
+app-pelada-detail .workspace-nav {
+  position: sticky;
+  top: 74px;
+  z-index: 14;
+}
+
+app-pelada-detail .section-anchor {
+  scroll-margin-top: 170px;
+}
+
+app-pelada-detail .workspace-nav-mobile {
+  display: none;
+}
+
+app-pelada-detail .workspace-nav-select {
+  width: min(340px, 100%);
+}
+
+app-pelada-detail .workspace-nav-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+app-pelada-detail .workspace-nav-actions .mat-mdc-button-base {
+  min-height: 36px;
+}
+
+@media (max-width: 920px) {
+  app-pelada-detail .workspace-nav {
+    top: 66px;
+  }
+
+  app-pelada-detail .section-anchor {
+    scroll-margin-top: 158px;
+  }
+
+  app-pelada-detail .workspace-nav-header .muted {
+    display: none;
+  }
+
+  app-pelada-detail .workspace-nav-mobile {
+    display: block;
+    margin-top: 8px;
+  }
+
+  app-pelada-detail .workspace-nav-select {
+    width: 100%;
+  }
+
+  app-pelada-detail .workspace-nav-actions {
+    display: none;
+  }
+}
+
+app-pelada-detail .panel,
+app-pelada-detail .team-editor,
+app-pelada-detail .result-card,
+app-pelada-detail .stat-row,
+app-pelada-detail .draw-summary,
+app-pelada-detail .craque-vote-box,
+app-pelada-detail .craque-podium-box,
+app-pelada-detail .vote-audit-group {
+  min-width: 0;
+}
+
+app-pelada-detail .podium-content {
+  min-width: 0;
+}
+
+app-pelada-detail .podium-content strong,
+app-pelada-detail .podium-content small {
+  overflow-wrap: anywhere;
+}
+
+app-pelada-detail .vote-form .mat-mdc-form-field {
+  min-width: 160px;
+  flex: 1 1 220px;
+}
+
+app-pelada-detail .chip-line .mat-mdc-chip,
+app-pelada-detail .selected-players-box .mat-mdc-chip,
+app-pelada-detail .draw-guest-list .mat-mdc-chip {
+  max-width: 100%;
+}
+
+app-pelada-detail .team-record {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #3b0764 !important;
+  font-weight: 700;
+  opacity: 1 !important;
+}
+
+app-pelada-detail .team-record-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  line-height: 1;
+}
+
+app-pelada-detail .team-record-pill strong {
+  font-size: 0.83rem;
+}
+
+app-pelada-detail .team-record-pill small {
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+app-pelada-detail .team-record-pill.wins {
+  background: #e9dcff;
+  border-color: #c4b5fd;
+  color: #5b21b6;
+}
+
+app-pelada-detail .team-record-pill.draws {
+  background: #ffedd5;
+  border-color: #fdba74;
+  color: #c2410c;
+}
+
+app-pelada-detail .team-record-pill.losses {
+  background: #f3e8ff;
+  border-color: #d8b4fe;
+  color: #6b21a8;
+}
+
+app-pelada-detail .chip-line .mdc-evolution-chip__text-label,
+app-pelada-detail .selected-players-box .mdc-evolution-chip__text-label,
+app-pelada-detail .draw-guest-list .mdc-evolution-chip__text-label {
+  white-space: normal;
+  line-height: 1.2;
+}
+
+@media (max-width: 860px) {
+  app-pelada-detail .vote-title-row .form-actions {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px;
+  }
+
+  app-pelada-detail .vote-title-row .form-actions .mat-mdc-button-base {
+    width: 100%;
+  }
+
+  app-pelada-detail .vote-form {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  app-pelada-detail .vote-form {
+    grid-template-columns: 1fr;
+  }
+
+  app-pelada-detail .vote-form button {
+    width: 100%;
+  }
+}

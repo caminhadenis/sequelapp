@@ -1,4 +1,5 @@
 import { authenticate, authorize } from '../middleware/auth.js';
+import { Pelada } from '../models/Pelada.js';
 import { User } from '../models/User.js';
 import { recalculateAllUsersStats } from '../services/stats-service.js';
 import {
@@ -11,6 +12,21 @@ import {
   sanitizeUserPayloadForRole
 } from '../utils/user-visibility.js';
 
+const VALID_POSITIONS = ['ZAGUEIRO', 'MEIA', 'ATACANTE'];
+const VALID_STAMINAS = ['BAIXA', 'MEDIA', 'ALTA'];
+
+function normalizePositionInput(value) {
+  return String(value || '')
+    .trim()
+    .toUpperCase();
+}
+
+function normalizeStaminaInput(value) {
+  return String(value || '')
+    .trim()
+    .toUpperCase();
+}
+
 function totalGames(user) {
   return (
     Number(user?.totalWins || 0) +
@@ -19,14 +35,66 @@ function totalGames(user) {
   );
 }
 
-function buildTopRankingByPosition(users = [], position) {
+function hasRachaHappened(dateValue, nowMs = Date.now()) {
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+
+  return date.getTime() <= nowMs;
+}
+
+function buildRachaParticipationSummary(peladas = []) {
+  const participationsByUser = new Map();
+  let totalHappenedRachas = 0;
+  const nowMs = Date.now();
+
+  for (const pelada of peladas || []) {
+    if (!hasRachaHappened(pelada?.date, nowMs)) {
+      continue;
+    }
+
+    totalHappenedRachas += 1;
+
+    const participants = new Set();
+    for (const team of pelada?.teams || []) {
+      for (const playerId of team?.players || []) {
+        participants.add(String(playerId));
+      }
+    }
+
+    for (const playerId of participants) {
+      participationsByUser.set(playerId, Number(participationsByUser.get(playerId) || 0) + 1);
+    }
+  }
+
+  return {
+    totalHappenedRachas,
+    participationsByUser
+  };
+}
+
+function minimumGamesForPositionRanking(totalHappenedRachas) {
+  const total = Number(totalHappenedRachas || 0);
+  if (total <= 0) {
+    return 0;
+  }
+
+  return Math.ceil(total / 4);
+}
+
+function buildTopRankingByPosition(users = [], position, options = {}) {
+  const minimumGames = Number(options?.minimumGames || 0);
+  const gamesByUserId = options?.gamesByUserId instanceof Map ? options.gamesByUserId : null;
+
   const sorted = users
     .filter((user) => user.position === position)
     .map((user) => ({
       user,
       rating: Number(user.ratingAverage || 0),
-      games: totalGames(user)
+      games: gamesByUserId ? Number(gamesByUserId.get(String(user._id)) || 0) : totalGames(user)
     }))
+    .filter((item) => item.games >= minimumGames)
     .sort((a, b) => {
       const ratingDiff = b.rating - a.rating;
       if (ratingDiff !== 0) {
@@ -122,10 +190,9 @@ export async function userRoutes(fastify) {
     }
 
     const { position } = request.body || {};
-    const normalizedPosition = String(position || '').trim().toUpperCase();
-    const validPositions = ['ZAGUEIRO', 'MEIA', 'ATACANTE'];
+    const normalizedPosition = normalizePositionInput(position);
 
-    if (!validPositions.includes(normalizedPosition)) {
+    if (!VALID_POSITIONS.includes(normalizedPosition)) {
       return reply
         .code(400)
         .send({ message: 'Posicao invalida. Use ZAGUEIRO, MEIA ou ATACANTE.' });
@@ -143,6 +210,56 @@ export async function userRoutes(fastify) {
 
     return {
       message: 'Posicao atualizada com sucesso.',
+      user: sanitizeUserPayloadForRole(user.toJSON(), request.user.role, {
+        includeOwnRatings: true
+      })
+    };
+  });
+
+  fastify.patch('/me/field-profile', { preHandler: [authenticate] }, async (request, reply) => {
+    if (request.user.role !== 'JOGADOR') {
+      return reply.code(403).send({ message: 'Apenas jogadores podem atualizar perfil em campo.' });
+    }
+
+    const { position, stamina } = request.body || {};
+    const normalizedPosition = normalizePositionInput(position);
+    const normalizedStamina = normalizeStaminaInput(stamina);
+
+    const updates = {};
+    if (position !== undefined) {
+      if (!VALID_POSITIONS.includes(normalizedPosition)) {
+        return reply
+          .code(400)
+          .send({ message: 'Posicao invalida. Use ZAGUEIRO, MEIA ou ATACANTE.' });
+      }
+      updates.position = normalizedPosition;
+    }
+
+    if (stamina !== undefined) {
+      if (!VALID_STAMINAS.includes(normalizedStamina)) {
+        return reply
+          .code(400)
+          .send({ message: 'Stamina invalida. Use BAIXA, MEDIA ou ALTA.' });
+      }
+      updates.stamina = normalizedStamina;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return reply.code(400).send({ message: 'Informe ao menos posicao ou stamina para atualizar.' });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      request.user.id,
+      { $set: updates },
+      { new: true }
+    );
+
+    if (!user) {
+      return reply.code(404).send({ message: 'Usuario nao encontrado.' });
+    }
+
+    return {
+      message: 'Perfil em campo atualizado com sucesso.',
       user: sanitizeUserPayloadForRole(user.toJSON(), request.user.role, {
         includeOwnRatings: true
       })
@@ -374,6 +491,7 @@ export async function userRoutes(fastify) {
       role: user.role,
       profileImageUrl: user.profileImageUrl,
       position: user.position,
+      stamina: user.stamina || 'MEDIA',
       approvalStatus: user.approvalStatus || 'APPROVED',
       ...(canSeeRatings ? { ratingAverage: user.ratingAverage } : {}),
       totalGoals: user.totalGoals,
@@ -403,10 +521,108 @@ export async function userRoutes(fastify) {
         'name username position profileImageUrl ratingAverage totalWins totalDraws totalLosses'
       ).lean();
 
+      const peladas = await Pelada.find({}, 'date teams.players').lean();
+      const participationSummary = buildRachaParticipationSummary(peladas);
+      const minimumGames = minimumGamesForPositionRanking(participationSummary.totalHappenedRachas);
+
       return {
-        zagueiro: buildTopRankingByPosition(users, 'ZAGUEIRO'),
-        meia: buildTopRankingByPosition(users, 'MEIA'),
-        atacante: buildTopRankingByPosition(users, 'ATACANTE')
+        totalHappenedRachas: participationSummary.totalHappenedRachas,
+        minimumGames,
+        zagueiro: buildTopRankingByPosition(users, 'ZAGUEIRO', {
+          minimumGames,
+          gamesByUserId: participationSummary.participationsByUser
+        }),
+        meia: buildTopRankingByPosition(users, 'MEIA', {
+          minimumGames,
+          gamesByUserId: participationSummary.participationsByUser
+        }),
+        atacante: buildTopRankingByPosition(users, 'ATACANTE', {
+          minimumGames,
+          gamesByUserId: participationSummary.participationsByUser
+        })
+      };
+    }
+  );
+
+  fastify.get(
+    '/:id',
+    {
+      preHandler: [authenticate, authorize('ADM')]
+    },
+    async (request, reply) => {
+      const user = await User.findOne(
+        {
+          _id: request.params.id,
+          role: 'JOGADOR'
+        }
+      );
+
+      if (!user) {
+        return reply.code(404).send({ message: 'Jogador nao encontrado.' });
+      }
+
+      const totalRachas = await Pelada.countDocuments({
+        date: { $lte: new Date() },
+        'teams.players': user._id
+      });
+
+      return {
+        ...sanitizeUserPayloadForRole(user.toJSON(), request.user.role),
+        totalRachas: Number(totalRachas || 0)
+      };
+    }
+  );
+
+  fastify.patch(
+    '/:id/field-profile',
+    {
+      preHandler: [authenticate, authorize('ADM')]
+    },
+    async (request, reply) => {
+      const { position, stamina } = request.body || {};
+      const normalizedPosition = normalizePositionInput(position);
+      const normalizedStamina = normalizeStaminaInput(stamina);
+
+      const updates = {};
+
+      if (position !== undefined) {
+        if (!VALID_POSITIONS.includes(normalizedPosition)) {
+          return reply
+            .code(400)
+            .send({ message: 'Posicao invalida. Use ZAGUEIRO, MEIA ou ATACANTE.' });
+        }
+        updates.position = normalizedPosition;
+      }
+
+      if (stamina !== undefined) {
+        if (!VALID_STAMINAS.includes(normalizedStamina)) {
+          return reply
+            .code(400)
+            .send({ message: 'Stamina invalida. Use BAIXA, MEDIA ou ALTA.' });
+        }
+        updates.stamina = normalizedStamina;
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return reply.code(400).send({ message: 'Informe ao menos posicao ou stamina para atualizar.' });
+      }
+
+      const user = await User.findOneAndUpdate(
+        {
+          _id: request.params.id,
+          role: 'JOGADOR'
+        },
+        { $set: updates },
+        { new: true }
+      );
+
+      if (!user) {
+        return reply.code(404).send({ message: 'Jogador nao encontrado.' });
+      }
+
+      return {
+        message: 'Perfil em campo do jogador atualizado.',
+        user: sanitizeUserPayloadForRole(user.toJSON(), request.user.role)
       };
     }
   );

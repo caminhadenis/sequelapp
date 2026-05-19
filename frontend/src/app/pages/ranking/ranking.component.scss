@@ -1,6 +1,6 @@
 .ranking-table {
   width: 100%;
-  min-width: 940px;
+  min-width: 1020px;
 }
 
 .admin-ranking-panel {
@@ -441,6 +441,10 @@
   grid-template-columns: 1fr 1fr;
   gap: 6px;
   font-size: 0.92rem;
+}
+
+.mobile-player-action {
+  justify-self: start;
 }
 
 @media (max-width: 760px) {

@@ -1,0 +1,100 @@
+<div class="page-container page-grid">
+  @if (!authService.isAdmin) {
+    <section class="panel">
+      <h2 class="panel-title">Detalhe do jogador</h2>
+      <p class="muted">Apenas ADMs podem acessar esta tela.</p>
+      <div class="form-actions">
+        <a mat-stroked-button color="primary" routerLink="/ranking">Voltar ao ranking</a>
+      </div>
+    </section>
+  } @else {
+    @if (loading) {
+      <section class="panel">
+        <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+      </section>
+    } @else if (player) {
+      <section class="panel player-detail-panel">
+        <div class="player-detail-header">
+          <div>
+            <h2 class="panel-title">{{ player.name | playerName }}</h2>
+            <p class="muted">&#64;{{ player.username }}</p>
+          </div>
+          <a mat-stroked-button color="primary" routerLink="/ranking">
+            <mat-icon>arrow_back</mat-icon>
+            Voltar
+          </a>
+        </div>
+
+        <div class="player-metrics-grid">
+          <article class="metric-card">
+            <span class="metric-label">Gols</span>
+            <strong>{{ player.totalGoals || 0 }}</strong>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Assistências</span>
+            <strong>{{ player.totalAssists || 0 }}</strong>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Vitórias</span>
+            <strong>{{ player.totalWins || 0 }}</strong>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Empates</span>
+            <strong>{{ player.totalDraws || 0 }}</strong>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Derrotas</span>
+            <strong>{{ player.totalLosses || 0 }}</strong>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Rachas</span>
+            <strong>{{ player.totalRachas || 0 }}</strong>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Nota média</span>
+            <strong>{{ player.ratingAverage | number : '1.1-2' }}</strong>
+          </article>
+        </div>
+
+        <article class="field-profile-card">
+          <h3>Perfil em campo</h3>
+          <p class="muted">Ajuste posição e stamina do jogador para melhorar o equilíbrio no tira times.</p>
+
+          <form [formGroup]="fieldProfileForm" class="field-profile-form" (ngSubmit)="saveFieldProfile()">
+            <mat-form-field appearance="outline">
+              <mat-label>Posição</mat-label>
+              <mat-select formControlName="position">
+                @for (option of positionOptions; track option.value) {
+                  <mat-option [value]="option.value">{{ option.label }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Stamina</mat-label>
+              <mat-select formControlName="stamina">
+                @for (option of staminaOptions; track option.value) {
+                  <mat-option [value]="option.value">{{ option.label }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+
+            <div class="form-actions">
+              <button mat-flat-button color="primary" type="submit" [disabled]="saving || fieldProfileForm.invalid">
+                Salvar perfil em campo
+              </button>
+            </div>
+          </form>
+        </article>
+      </section>
+    } @else {
+      <section class="panel">
+        <h2 class="panel-title">Detalhe do jogador</h2>
+        <p class="muted">Jogador não encontrado.</p>
+        <div class="form-actions">
+          <a mat-stroked-button color="primary" routerLink="/ranking">Voltar ao ranking</a>
+        </div>
+      </section>
+    }
+  }
+</div>

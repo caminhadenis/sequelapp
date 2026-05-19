@@ -31,6 +31,7 @@ import {
   TeamsDrawResponse,
   PeladaGuestPlayer,
   PlayerPosition,
+  PlayerStamina,
   PresenceEntry,
   PresenceInfo,
   RatingCard,
@@ -60,13 +61,21 @@ interface DrawGuestPlayer {
   name: string;
   rating: number;
   position: PlayerPosition;
+  stamina: PlayerStamina;
 }
 
 interface DrawSelectedRegisteredPlayer {
   id: string;
   name: string;
   position: string;
+  stamina: string;
   rating: string;
+}
+
+interface QuickNavShortcut {
+  id: string;
+  label: string;
+  icon: string;
 }
 
 function maxLengthArrayValidator(length: number) {
@@ -115,7 +124,7 @@ export class PeladaDetailComponent implements OnInit {
   canCurrentUserVote = false;
   canCurrentUserVoteCraque = false;
   voteSelections: Record<string, number> = {};
-  readonly quickScoreOptions = [1, 2, 3, 4, 5];
+  readonly quickScoreOptions = Array.from({ length: 10 }, (_, index) => Number(((index + 1) / 2).toFixed(1)));
   ratingFlowQueue: RatingCard[] = [];
   ratingFlowSelectedScore: number | null = null;
   ratingFlowAnimating = false;
@@ -124,6 +133,7 @@ export class PeladaDetailComponent implements OnInit {
   voteGroups: Array<{ toUserId: string; toUserName: string; votes: VoteDetail[] }> = [];
   adminVoteSelections: Record<string, number> = {};
   tournamentRoundGroups: Array<{ round: number; matchIndexes: number[] }> = [];
+  mobileQuickNavSelection = '';
   playerStatsSearchTerm = '';
   lastDrawResult: TeamsDrawResponse | null = null;
   drawGuestPlayers: DrawGuestPlayer[] = [];
@@ -132,6 +142,13 @@ export class PeladaDetailComponent implements OnInit {
     { value: 'MEIA', label: 'Meia' },
     { value: 'ATACANTE', label: 'Atacante' }
   ];
+  readonly guestStaminaOptions: Array<{ value: PlayerStamina; label: string }> = [
+    { value: 'BAIXA', label: 'Baixa' },
+    { value: 'MEDIA', label: 'Média' },
+    { value: 'ALTA', label: 'Alta' }
+  ];
+  readonly resultsValueOptions = Array.from({ length: 11 }, (_, index) => index);
+  readonly statsValueOptions = Array.from({ length: 16 }, (_, index) => index);
   readonly maxTeamsPerRacha = 4;
   readonly maxPlayersPerTeam = 5;
 
@@ -160,7 +177,8 @@ export class PeladaDetailComponent implements OnInit {
     playerIds: [[] as string[]],
     guestNameDraft: [''],
     guestRatingDraft: [3, [Validators.required, Validators.min(1), Validators.max(5)]],
-    guestPositionDraft: ['MEIA', [Validators.required]]
+    guestPositionDraft: ['MEIA', [Validators.required]],
+    guestStaminaDraft: ['MEDIA', [Validators.required]]
   });
 
   constructor(
@@ -260,6 +278,7 @@ export class PeladaDetailComponent implements OnInit {
           id: String(user.id),
           name: toPlayerDisplayName(user.name),
           position: this.drawPlayerPositionLabel(user.position),
+          stamina: this.drawPlayerStaminaLabel(user.stamina),
           rating
         };
       })
@@ -373,6 +392,34 @@ export class PeladaDetailComponent implements OnInit {
     return this.ratingCards.some((card) => card.playerId === currentUserId);
   }
 
+  get quickNavShortcuts(): QuickNavShortcut[] {
+    const shortcuts: QuickNavShortcut[] = [];
+
+    if (this.authService.isAdmin) {
+      shortcuts.push(
+        { id: 'presence-section', label: 'Presença', icon: 'how_to_reg' },
+        { id: 'admin-management-section', label: 'Gestão de times', icon: 'construction' },
+        { id: 'results-section', label: 'Resultados', icon: 'leaderboard' },
+        { id: 'stats-section', label: 'Gols e assistências', icon: 'sports_soccer' },
+        { id: 'voting-section', label: 'Notas e votação', icon: 'star' },
+        { id: 'audit-section', label: 'Auditoria', icon: 'fact_check' }
+      );
+    } else {
+      shortcuts.push(
+        { id: 'voting-section', label: 'Ir para votação', icon: 'star' },
+        { id: 'presence-section', label: 'Presença', icon: 'how_to_reg' }
+      );
+    }
+
+    shortcuts.push({ id: 'teams-section', label: 'Times', icon: 'groups' });
+
+    if (this.isTournament) {
+      shortcuts.push({ id: 'tournament-section', label: 'Torneio', icon: 'emoji_events' });
+    }
+
+    return shortcuts;
+  }
+
   ngOnInit(): void {
     this.peladaId = this.route.snapshot.paramMap.get('id') || '';
     if (!this.peladaId) {
@@ -479,7 +526,8 @@ export class PeladaDetailComponent implements OnInit {
             id: `team-guest-${index + 1}`,
             name: String(guest?.name || '').trim(),
             rating: 3,
-            position: (guest?.position as PlayerPosition) || 'MEIA'
+            position: (guest?.position as PlayerPosition) || 'MEIA',
+            stamina: 'MEDIA'
           }))
         : [];
 
@@ -491,7 +539,8 @@ export class PeladaDetailComponent implements OnInit {
         playerIds: nextPlayerIds.slice(0, availableRegisteredSlots),
         guestNameDraft: '',
         guestRatingDraft: 3,
-        guestPositionDraft: 'MEIA'
+        guestPositionDraft: 'MEIA',
+        guestStaminaDraft: 'MEDIA'
       },
       { emitEvent: false }
     );
@@ -542,14 +591,21 @@ export class PeladaDetailComponent implements OnInit {
     return 'SEM POS';
   }
 
+  drawPlayerStaminaLabel(stamina?: PlayerStamina): string {
+    if (stamina === 'BAIXA') return 'BAIXA';
+    if (stamina === 'ALTA') return 'ALTA';
+    return 'MÉDIA';
+  }
+
   drawPlayerMeta(user: User): string {
     const position = this.drawPlayerPositionLabel(user.position);
+    const stamina = this.drawPlayerStaminaLabel(user.stamina);
     const rating =
       typeof user.ratingAverage === 'number' && Number.isFinite(user.ratingAverage)
         ? user.ratingAverage.toFixed(2).replace('.', ',')
         : '--';
 
-    return `${position} • nota ${rating}`;
+    return `${position} • stamina ${stamina} • nota ${rating}`;
   }
 
   addDrawGuestPlayer(): void {
@@ -571,6 +627,7 @@ export class PeladaDetailComponent implements OnInit {
     const guestNameControl = this.drawTeamsForm.get('guestNameDraft');
     const guestRatingControl = this.drawTeamsForm.get('guestRatingDraft');
     const guestPositionControl = this.drawTeamsForm.get('guestPositionDraft');
+    const guestStaminaControl = this.drawTeamsForm.get('guestStaminaDraft');
 
     const guestName = String(guestNameControl?.value || '')
       .trim()
@@ -579,6 +636,9 @@ export class PeladaDetailComponent implements OnInit {
     const guestPosition = String(guestPositionControl?.value || '')
       .trim()
       .toUpperCase() as PlayerPosition;
+    const guestStamina = String(guestStaminaControl?.value || 'MEDIA')
+      .trim()
+      .toUpperCase() as PlayerStamina;
 
     if (!guestName) {
       guestNameControl?.markAsTouched();
@@ -597,9 +657,17 @@ export class PeladaDetailComponent implements OnInit {
     }
 
     const validPositions: PlayerPosition[] = ['ZAGUEIRO', 'MEIA', 'ATACANTE'];
+    const validStaminas: PlayerStamina[] = ['BAIXA', 'MEDIA', 'ALTA'];
     if (!validPositions.includes(guestPosition)) {
       guestPositionControl?.markAsTouched();
       this.snackBar.open('Selecione uma posição válida para o convidado.', 'Fechar', {
+        duration: 2600
+      });
+      return;
+    }
+    if (!validStaminas.includes(guestStamina)) {
+      guestStaminaControl?.markAsTouched();
+      this.snackBar.open('Selecione uma stamina válida para o convidado.', 'Fechar', {
         duration: 2600
       });
       return;
@@ -609,12 +677,14 @@ export class PeladaDetailComponent implements OnInit {
       id: `draw-guest-${Date.now()}-${Math.round(Math.random() * 100000)}`,
       name: guestName,
       rating: Number(guestRating.toFixed(2)),
-      position: guestPosition
+      position: guestPosition,
+      stamina: guestStamina
     });
 
     guestNameControl?.setValue('', { emitEvent: false });
     guestRatingControl?.setValue(3, { emitEvent: false });
     guestPositionControl?.setValue('MEIA', { emitEvent: false });
+    guestStaminaControl?.setValue('MEDIA', { emitEvent: false });
   }
 
   removeDrawGuestPlayer(guestId: string): void {
@@ -645,7 +715,8 @@ export class PeladaDetailComponent implements OnInit {
         playerIds: [],
         guestNameDraft: '',
         guestRatingDraft: 3,
-        guestPositionDraft: 'MEIA'
+        guestPositionDraft: 'MEIA',
+        guestStaminaDraft: 'MEDIA'
       },
       { emitEvent: false }
     );
@@ -655,8 +726,9 @@ export class PeladaDetailComponent implements OnInit {
 
   drawGuestChipLabel(guest: DrawGuestPlayer): string {
     const labelPosition = this.drawPlayerPositionLabel(guest.position);
+    const labelStamina = this.drawPlayerStaminaLabel(guest.stamina);
     const labelRating = Number(guest.rating || 0).toFixed(2).replace('.', ',');
-    return `${toPlayerDisplayName(guest.name)} • ${labelPosition} • nota ${labelRating}`;
+    return `${toPlayerDisplayName(guest.name)} • ${labelPosition} • stamina ${labelStamina} • nota ${labelRating}`;
   }
 
   drawTeamPlayersPreview(team: TeamsDrawResponse['teams'][number]): string {
@@ -867,9 +939,9 @@ export class PeladaDetailComponent implements OnInit {
         this.formBuilder.group({
           teamId: [team.id],
           teamName: [team.name],
-          wins: [team.wins || 0, [Validators.min(0)]],
-          draws: [team.draws || 0, [Validators.min(0)]],
-          losses: [team.losses || 0, [Validators.min(0)]]
+          wins: [team.wins || 0, [Validators.min(0), Validators.max(10)]],
+          draws: [team.draws || 0, [Validators.min(0), Validators.max(10)]],
+          losses: [team.losses || 0, [Validators.min(0), Validators.max(10)]]
         })
       );
     }
@@ -893,8 +965,8 @@ export class PeladaDetailComponent implements OnInit {
         this.formBuilder.group({
           playerId: [playerId],
           playerName: [player.name],
-          goals: [stat?.goals || 0, [Validators.min(0)]],
-          assists: [stat?.assists || 0, [Validators.min(0)]]
+          goals: [stat?.goals || 0, [Validators.min(0), Validators.max(15)]],
+          assists: [stat?.assists || 0, [Validators.min(0), Validators.max(15)]]
         })
       );
     }
@@ -1098,7 +1170,8 @@ export class PeladaDetailComponent implements OnInit {
         .trim()
         .replace(/\s+/g, ' '),
       rating: Number(guest.rating),
-      position: guest.position
+      position: guest.position,
+      stamina: guest.stamina
     }));
     const teamCount = this.drawTeamCount;
     const maxAllowedPlayers = teamCount * this.maxPlayersPerTeam;
@@ -1139,9 +1212,13 @@ export class PeladaDetailComponent implements OnInit {
           this.lastDrawResult = response;
           this.applyDrawnTeamsToForm(response);
           this.actionLoading = false;
-          this.snackBar.open('Times sorteados com equilíbrio de nota e posição. Revise e clique em Salvar times.', 'Fechar', {
-            duration: 3800
-          });
+          this.snackBar.open(
+            'Times sorteados com equilíbrio de nota, posição e stamina. Revise e clique em Salvar times.',
+            'Fechar',
+            {
+              duration: 3800
+            }
+          );
         },
         error: (error) => {
           this.actionLoading = false;
@@ -1576,8 +1653,8 @@ export class PeladaDetailComponent implements OnInit {
 
     const score = this.voteSelections[card.playerId];
 
-    if (!score || score < 1 || score > 5) {
-      this.snackBar.open('Selecione uma nota entre 1 e 5.', 'Fechar', { duration: 2200 });
+    if (!this.isValidRatingScore(score)) {
+      this.snackBar.open('Selecione uma nota válida entre 0,5 e 5,0.', 'Fechar', { duration: 2200 });
       return;
     }
 
@@ -1634,8 +1711,8 @@ export class PeladaDetailComponent implements OnInit {
     }
 
     const score = this.ratingFlowSelectedScore;
-    if (!score || score < 1 || score > 5) {
-      this.snackBar.open('Selecione uma nota entre 1 e 5 para continuar.', 'Fechar', {
+    if (!this.isValidRatingScore(score)) {
+      this.snackBar.open('Selecione uma nota válida entre 0,5 e 5,0 para continuar.', 'Fechar', {
         duration: 2200
       });
       return;
@@ -1789,8 +1866,8 @@ export class PeladaDetailComponent implements OnInit {
     }
 
     const score = Number(this.adminVoteSelections[this.voteEditKey(vote)]);
-    if (Number.isNaN(score) || score < 1 || score > 5) {
-      this.snackBar.open('Selecione uma nota entre 1 e 5.', 'Fechar', { duration: 2200 });
+    if (!this.isValidRatingScore(score)) {
+      this.snackBar.open('Selecione uma nota válida entre 0,5 e 5,0.', 'Fechar', { duration: 2200 });
       return;
     }
 
@@ -1977,6 +2054,49 @@ export class PeladaDetailComponent implements OnInit {
     }
 
     return `Você está na lista de Suplentes. Posição: ${order}`;
+  }
+
+  goToSection(sectionId: string): void {
+    if (typeof document === 'undefined' || typeof window === 'undefined') {
+      return;
+    }
+
+    const target = document.getElementById(String(sectionId || ''));
+    if (!target) {
+      return;
+    }
+
+    target.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    });
+  }
+
+  onQuickNavSelectionChange(sectionId: string): void {
+    const normalizedSection = String(sectionId || '').trim();
+    if (!normalizedSection) {
+      return;
+    }
+
+    this.mobileQuickNavSelection = normalizedSection;
+    this.goToSection(normalizedSection);
+
+    setTimeout(() => {
+      this.mobileQuickNavSelection = '';
+    }, 180);
+  }
+
+  formatRatingScore(score: number): string {
+    return Number(score).toFixed(1).replace('.', ',');
+  }
+
+  private isValidRatingScore(score: unknown): score is number {
+    const numericScore = Number(score);
+    if (!Number.isFinite(numericScore) || numericScore < 0.5 || numericScore > 5) {
+      return false;
+    }
+
+    return Math.abs(numericScore * 2 - Math.round(numericScore * 2)) < 1e-9;
   }
 
   private normalizeSearch(value: string): string {

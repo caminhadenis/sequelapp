@@ -71,6 +71,11 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ['ZAGUEIRO', 'MEIA', 'ATACANTE']
     },
+    stamina: {
+      type: String,
+      enum: ['BAIXA', 'MEDIA', 'ALTA'],
+      default: 'MEDIA'
+    },
     approvalStatus: {
       type: String,
       enum: ['PENDING', 'APPROVED'],

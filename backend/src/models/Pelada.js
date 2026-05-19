@@ -14,8 +14,12 @@ const voteSchema = new mongoose.Schema(
     },
     score: {
       type: Number,
-      min: 1,
+      min: 0.5,
       max: 5,
+      validate: {
+        validator: (value) => Number.isFinite(value) && Math.abs(value * 2 - Math.round(value * 2)) < 1e-9,
+        message: 'Score must be in 0.5 increments between 0.5 and 5.0.'
+      },
       required: true
     }
   },

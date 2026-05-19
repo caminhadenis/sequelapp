@@ -4,6 +4,7 @@ const FALLBACK_ORDER = {
   MEIA: ['ATACANTE', 'ZAGUEIRO'],
   ATACANTE: ['MEIA', 'ZAGUEIRO']
 };
+const STAMINA_ORDER = ['BAIXA', 'MEDIA', 'ALTA'];
 
 function normalizedRating(player) {
   const rating = Number(player?.rating);
@@ -18,6 +19,13 @@ function normalizePosition(position) {
     .trim()
     .toUpperCase();
   return POSITION_ORDER.includes(normalized) ? normalized : null;
+}
+
+function normalizeStamina(stamina) {
+  const normalized = String(stamina || '')
+    .trim()
+    .toUpperCase();
+  return STAMINA_ORDER.includes(normalized) ? normalized : 'MEDIA';
 }
 
 function shuffle(items) {
@@ -88,6 +96,31 @@ function countPositions(teamPlayers) {
   return counts;
 }
 
+function countStamina(teamPlayers) {
+  const counts = {
+    BAIXA: 0,
+    MEDIA: 0,
+    ALTA: 0
+  };
+
+  for (const player of teamPlayers) {
+    const normalized = normalizeStamina(player?.stamina);
+    counts[normalized] += 1;
+  }
+
+  return counts;
+}
+
+function minimumDefendersPerTeam(totalDefenders, teamCount) {
+  if (totalDefenders >= teamCount * 2) {
+    return 2;
+  }
+  if (totalDefenders >= teamCount) {
+    return 1;
+  }
+  return 0;
+}
+
 function missingPositionPenalty(role, counts) {
   const [firstFallback, secondFallback] = FALLBACK_ORDER[role];
   if (counts[firstFallback] > 0) {
@@ -102,16 +135,24 @@ function missingPositionPenalty(role, counts) {
   return 1.25;
 }
 
-function teamPositionPenalty(teamPlayers) {
+function teamPositionPenalty(teamPlayers, context) {
   if (!Array.isArray(teamPlayers) || teamPlayers.length === 0) {
     return 0;
   }
 
   const counts = countPositions(teamPlayers);
   let penalty = 0;
+  const minimumDefenders = Math.min(Number(context?.minimumDefenders || 0), teamPlayers.length);
+
+  if (counts.ZAGUEIRO < minimumDefenders) {
+    const deficit = minimumDefenders - counts.ZAGUEIRO;
+    const fallbackSupport = counts.MEIA + counts.FLEX;
+    const deficitWeight = minimumDefenders >= 2 ? 2.35 : 1.35;
+    penalty += deficit * (fallbackSupport > 0 ? deficitWeight : deficitWeight + 0.7);
+  }
 
   if (teamPlayers.length >= 3) {
-    for (const role of POSITION_ORDER) {
+    for (const role of ['MEIA', 'ATACANTE']) {
       if (counts[role] > 0) {
         continue;
       }
@@ -120,7 +161,11 @@ function teamPositionPenalty(teamPlayers) {
   }
 
   for (const role of POSITION_ORDER) {
-    if (counts[role] > 2) {
+    if (role === 'ZAGUEIRO' && counts[role] > 2) {
+      penalty += (counts[role] - 2) * 0.35;
+    }
+
+    if (role !== 'ZAGUEIRO' && counts[role] > 2) {
       penalty += (counts[role] - 2) * 0.45;
     }
   }
@@ -142,7 +187,30 @@ function roleVariancePenalty(teams) {
   return penalty;
 }
 
-function calculateAssignmentCost(teams) {
+function staminaVariancePenalty(teams) {
+  if (!Array.isArray(teams) || teams.length === 0) {
+    return 0;
+  }
+
+  const altaCounts = teams.map((team) => team.filter((player) => normalizeStamina(player.stamina) === 'ALTA').length);
+  const baixaCounts = teams.map((team) => team.filter((player) => normalizeStamina(player.stamina) === 'BAIXA').length);
+
+  function stdDev(values) {
+    const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+    const variance =
+      values.reduce((sum, value) => sum + (value - average) * (value - average), 0) / values.length;
+    return Math.sqrt(variance);
+  }
+
+  const altaStd = stdDev(altaCounts);
+  const baixaStd = stdDev(baixaCounts);
+  const altaSpread = Math.max(...altaCounts) - Math.min(...altaCounts);
+  const baixaSpread = Math.max(...baixaCounts) - Math.min(...baixaCounts);
+
+  return altaStd * 1.45 + baixaStd * 1.45 + altaSpread * 0.8 + baixaSpread * 0.8;
+}
+
+function calculateAssignmentCost(teams, context) {
   const teamAverages = teams.map((team) => {
     if (team.length === 0) {
       return 0;
@@ -157,11 +225,17 @@ function calculateAssignmentCost(teams) {
   const stdDeviation = Math.sqrt(
     teamAverages.reduce((sum, value) => sum + (value - averageOfAverages) ** 2, 0) / teamAverages.length
   );
-  const positionPenalty = teams.reduce((sum, team) => sum + teamPositionPenalty(team), 0);
+  const positionPenalty = teams.reduce((sum, team) => sum + teamPositionPenalty(team, context), 0);
   const variancePenalty = roleVariancePenalty(teams);
+  const staminaPenalty = staminaVariancePenalty(teams);
 
   return {
-    value: (maxAverage - minAverage) * 3 + stdDeviation * 2 + positionPenalty * 2 + variancePenalty * 0.7,
+    value:
+      (maxAverage - minAverage) * 3.2 +
+      stdDeviation * 2.1 +
+      positionPenalty * 2.6 +
+      variancePenalty * 1.1 +
+      staminaPenalty * 1.9,
     spread: maxAverage - minAverage
   };
 }
@@ -185,9 +259,9 @@ function createInitialAssignment(players, capacities) {
   return teams;
 }
 
-function optimizeAssignment(initialTeams, iterations = 2200) {
+function optimizeAssignment(initialTeams, context, iterations = 2200) {
   let currentTeams = cloneTeams(initialTeams);
-  let currentScore = calculateAssignmentCost(currentTeams).value;
+  let currentScore = calculateAssignmentCost(currentTeams, context).value;
   let bestTeams = cloneTeams(initialTeams);
   let bestScore = currentScore;
 
@@ -210,7 +284,7 @@ function optimizeAssignment(initialTeams, iterations = 2200) {
       currentTeams[teamA][playerAIndex]
     ];
 
-    const nextScore = calculateAssignmentCost(currentTeams).value;
+    const nextScore = calculateAssignmentCost(currentTeams, context).value;
     const cooling = 0.28 * (1 - iteration / iterations) + 0.02;
     const acceptance = Math.exp((currentScore - nextScore) / cooling);
 
@@ -237,7 +311,8 @@ function optimizeAssignment(initialTeams, iterations = 2200) {
 function buildTeamSummary(teamPlayers, index) {
   const totalRating = teamPlayers.reduce((sum, player) => sum + player.rating, 0);
   const averageRating = teamPlayers.length > 0 ? totalRating / teamPlayers.length : 0;
-  const counts = countPositions(teamPlayers);
+  const positionCounts = countPositions(teamPlayers);
+  const staminaCounts = countStamina(teamPlayers);
 
   return {
     name: `Time ${index + 1}`,
@@ -246,6 +321,7 @@ function buildTeamSummary(teamPlayers, index) {
         id: player.id,
         name: player.name,
         position: player.position,
+        stamina: normalizeStamina(player.stamina),
         isGuest: Boolean(player.isGuest),
         rating: Number(player.rating.toFixed(2))
       }))
@@ -253,10 +329,15 @@ function buildTeamSummary(teamPlayers, index) {
     totalRating: Number(totalRating.toFixed(2)),
     averageRating: Number(averageRating.toFixed(2)),
     positionCounts: {
-      ZAGUEIRO: counts.ZAGUEIRO,
-      MEIA: counts.MEIA,
-      ATACANTE: counts.ATACANTE,
-      FLEX: counts.FLEX
+      ZAGUEIRO: positionCounts.ZAGUEIRO,
+      MEIA: positionCounts.MEIA,
+      ATACANTE: positionCounts.ATACANTE,
+      FLEX: positionCounts.FLEX
+    },
+    staminaCounts: {
+      BAIXA: staminaCounts.BAIXA,
+      MEDIA: staminaCounts.MEDIA,
+      ALTA: staminaCounts.ALTA
     }
   };
 }
@@ -284,15 +365,20 @@ export function drawBalancedTeams(players, teamCount, { maxPlayersPerTeam = 5 } 
     id: String(player.id),
     name: String(player.name || 'Jogador'),
     rating: normalizedRating(player),
-    position: normalizePosition(player.position)
+    position: normalizePosition(player.position),
+    stamina: normalizeStamina(player.stamina)
   }));
 
   const capacities = buildTeamCapacities(normalizedPlayers.length, teamCount);
+  const totalDefenders = normalizedPlayers.filter((player) => player.position === 'ZAGUEIRO').length;
+  const assignmentContext = {
+    minimumDefenders: minimumDefendersPerTeam(totalDefenders, teamCount)
+  };
   let best = null;
 
   for (let restart = 0; restart < 28; restart += 1) {
     const initialTeams = createInitialAssignment(shuffle(normalizedPlayers), capacities);
-    const optimized = optimizeAssignment(initialTeams, 1800);
+    const optimized = optimizeAssignment(initialTeams, assignmentContext, 1800);
 
     if (!best || optimized.score < best.score) {
       best = optimized;
@@ -304,13 +390,21 @@ export function drawBalancedTeams(players, teamCount, { maxPlayersPerTeam = 5 } 
   const maxAverage = Math.max(...averages);
   const minAverage = Math.min(...averages);
   const spread = Number((maxAverage - minAverage).toFixed(2));
+  const highStaminaCounts = teams.map((team) => Number(team.staminaCounts.ALTA || 0));
+  const lowStaminaCounts = teams.map((team) => Number(team.staminaCounts.BAIXA || 0));
+  const highSpread = Math.max(...highStaminaCounts) - Math.min(...highStaminaCounts);
+  const lowSpread = Math.max(...lowStaminaCounts) - Math.min(...lowStaminaCounts);
 
   return {
     teams,
     balance: {
       minAverageRating: Number(minAverage.toFixed(2)),
       maxAverageRating: Number(maxAverage.toFixed(2)),
-      spread
+      spread,
+      staminaSpread: {
+        high: highSpread,
+        low: lowSpread
+      }
     }
   };
 }
