@@ -230,6 +230,63 @@ const teamSchema = new mongoose.Schema(
   }
 );
 
+const drawDraftGuestPlayerSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    rating: {
+      type: Number,
+      min: 1,
+      max: 5,
+      required: true
+    },
+    position: {
+      type: String,
+      enum: ['ZAGUEIRO', 'MEIA', 'ATACANTE'],
+      default: null
+    },
+    stamina: {
+      type: String,
+      enum: ['BAIXA', 'MEDIA', 'ALTA'],
+      default: 'MEDIA',
+      required: true
+    }
+  },
+  {
+    _id: false
+  }
+);
+
+const drawDraftSchema = new mongoose.Schema(
+  {
+    teamCount: {
+      type: Number,
+      min: 2,
+      max: 4,
+      default: 4,
+      required: true
+    },
+    playerIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }
+    ],
+    guestPlayers: [drawDraftGuestPlayerSchema],
+    updatedAt: {
+      type: Date,
+      default: Date.now,
+      required: true
+    }
+  },
+  {
+    _id: false
+  }
+);
+
 const peladaSchema = new mongoose.Schema(
   {
     date: {
@@ -272,6 +329,10 @@ const peladaSchema = new mongoose.Schema(
     craqueVotes: [craqueVoteSchema],
     craqueResult: {
       type: craqueResultSchema,
+      default: null
+    },
+    drawDraft: {
+      type: drawDraftSchema,
       default: null
     }
   },

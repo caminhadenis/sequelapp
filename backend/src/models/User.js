@@ -91,10 +91,16 @@ const userSchema = new mongoose.Schema(
     },
     ratingAverage: {
       type: Number,
-      min: 1,
+      min: 0.5,
       max: 5,
       default: 3,
       required: true
+    },
+    manualRatingAverage: {
+      type: Number,
+      min: 0.5,
+      max: 5,
+      default: null
     },
     totalGoals: {
       type: Number,

@@ -11,6 +11,7 @@ import {
 import { drawBalancedTeams } from '../utils/team-draw.js';
 import { sendPushNotificationToUsers } from '../utils/push-notification.js';
 import { canRequesterSeeRatings } from '../utils/user-visibility.js';
+import { buildSelectionOfRound } from '../utils/selection-of-round.js';
 
 const CRAQUE_WEIGHTS = {
   firstUser: 5,
@@ -343,7 +344,7 @@ export async function peladaRoutes(fastify) {
     const canSeeRatings = canRequesterSeeRatings(request.user);
     const teamPlayerProjection = canSeeRatings
       ? 'name username role ratingAverage position stamina profileImageUrl'
-      : 'name username role position stamina profileImageUrl';
+      : 'name username role position profileImageUrl';
 
     const pelada = await Pelada.findById(request.params.id)
       .populate('teams.players', teamPlayerProjection)
@@ -360,6 +361,7 @@ export async function peladaRoutes(fastify) {
     const users = await User.find({ _id: { $in: participantIds } }, 'name').lean();
     const usersById = new Map(users.map((user) => [String(user._id), user]));
     const craquePodium = buildCraquePodiumForResponse(pelada, usersById);
+    const selectionOfRound = buildSelectionOfRound(pelada);
     const isTournament = (pelada.type || 'NORMAL') === 'TOURNAMENT';
     const tournamentInfo = isTournament
       ? buildTournamentInfo(pelada.teams || [], pelada.tournamentMatches || [])
@@ -391,7 +393,7 @@ export async function peladaRoutes(fastify) {
           profileImageUrl: player.profileImageUrl || null,
           ...(canSeeRatings ? { ratingAverage: player.ratingAverage } : {}),
           position: player.position,
-          stamina: player.stamina || 'MEDIA'
+          ...(canSeeRatings ? { stamina: player.stamina || 'MEDIA' } : {})
         }))
       })),
       playerStats: (pelada.playerStats || []).map((stat) => ({
@@ -400,10 +402,24 @@ export async function peladaRoutes(fastify) {
         goals: stat.goals || 0,
         assists: stat.assists || 0
       })),
+      drawDraft: canSeeRatings && pelada.drawDraft
+        ? {
+            teamCount: Number(pelada.drawDraft.teamCount || 4),
+            playerIds: (pelada.drawDraft.playerIds || []).map((item) => String(item)),
+            guestPlayers: (pelada.drawDraft.guestPlayers || []).map((guest) => ({
+              name: String(guest?.name || '').trim(),
+              rating: Number(guest?.rating || 0),
+              position: guest?.position || null,
+              stamina: guest?.stamina || 'MEDIA'
+            })),
+            updatedAt: pelada.drawDraft.updatedAt || null
+          }
+        : null,
       presence: buildPresenceInfoForResponse(pelada, request.user.id),
       votesCount: (pelada.votes || []).length,
       tournament: tournamentInfo,
-      craquePodium
+      craquePodium,
+      selectionOfRound
     };
   });
 
@@ -534,6 +550,21 @@ export async function peladaRoutes(fastify) {
       } catch (error) {
         return reply.code(400).send({ message: error.message || 'Nao foi possivel gerar o sorteio.' });
       }
+
+      pelada.drawDraft = {
+        teamCount: parsedTeamCount,
+        playerIds: uniquePlayerIds,
+        guestPlayers: normalizedGuestPlayers.map((guest) => ({
+          name: String(guest.name || '')
+            .trim()
+            .replace(/\s+/g, ' '),
+          rating: Number(guest.rating),
+          position: guest.position || null,
+          stamina: guest.stamina || 'MEDIA'
+        })),
+        updatedAt: new Date()
+      };
+      await pelada.save();
 
       return {
         message: 'Sorteio equilibrado gerado com sucesso.',

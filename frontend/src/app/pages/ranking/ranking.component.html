@@ -67,7 +67,7 @@
             </div>
           </header>
 
-          @if (category.topThree.length === 0) {
+          @if (category.topEntries.length === 0) {
             <p class="muted podium-empty-state">Ainda sem dados para este pódio.</p>
           } @else {
             <div class="podium-stage">
@@ -110,6 +110,30 @@
                 </div>
               }
             </div>
+
+            @if (category.continuationEntries.length > 0) {
+              <div class="ranking-continuation-list" aria-label="Continuação do ranking">
+                @for (entry of category.continuationEntries; track entry.userId) {
+                  <div class="ranking-continuation-row">
+                    <span class="ranking-continuation-rank">{{ entry.rank }}º</span>
+                    <span class="ranking-continuation-avatar">
+                      @if (entry.profileImageUrl) {
+                        <img [src]="entry.profileImageUrl" alt="Foto de {{ entry.userName | playerName }}" />
+                      } @else {
+                        <mat-icon>person</mat-icon>
+                      }
+                    </span>
+                    <div class="ranking-continuation-content">
+                      <strong>{{ entry.userName | playerName }}</strong>
+                      <small>{{ entry.value }} {{ category.unit }}</small>
+                      @if (entry.secondaryLabel) {
+                        <small class="ranking-continuation-subscore">{{ entry.secondaryLabel }}</small>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+            }
           }
         </article>
       }
@@ -119,7 +143,7 @@
   <section class="panel position-podium-panel">
     <div class="podium-panel-header">
       <div>
-        <h2 class="panel-title">Top 3 por posição</h2>
+        <h2 class="panel-title">Top 5 por posição</h2>
         <p class="muted">Ranking por nota média, sem exibir a nota dos jogadores.</p>
       </div>
     </div>

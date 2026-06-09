@@ -23,8 +23,7 @@
           <div class="summary-player-row">
             <h3 class="summary-player-name">{{ currentUser.name | playerName }}</h3>
             <span class="status-chip position-chip">
-              Posição: {{ playerPositionLabel(currentUser.position) }} • Stamina:
-              {{ playerStaminaLabel(currentUser.stamina) }}
+              Posição: {{ playerPositionLabel(currentUser.position) }}
             </span>
           </div>
 
@@ -144,22 +143,13 @@
 
           <article class="profile-card">
             <h3>Perfil em campo</h3>
-            <p class="muted">Defina sua posição e stamina para ajudar no sorteio equilibrado.</p>
+            <p class="muted">Defina sua posição principal em campo.</p>
 
             <form [formGroup]="positionForm" class="profile-form" (ngSubmit)="savePosition()">
               <mat-form-field appearance="outline">
                 <mat-label>Minha posição</mat-label>
                 <mat-select formControlName="position">
                   @for (option of playerPositionOptions; track option.value) {
-                    <mat-option [value]="option.value">{{ option.label }}</mat-option>
-                  }
-                </mat-select>
-              </mat-form-field>
-
-              <mat-form-field appearance="outline">
-                <mat-label>Minha stamina</mat-label>
-                <mat-select formControlName="stamina">
-                  @for (option of playerStaminaOptions; track option.value) {
                     <mat-option [value]="option.value">{{ option.label }}</mat-option>
                   }
                 </mat-select>

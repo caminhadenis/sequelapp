@@ -65,6 +65,10 @@
   max-width: 420px;
 }
 
+.compact-rating-form {
+  max-width: 260px;
+}
+
 @media (max-width: 980px) {
   .player-metrics-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));

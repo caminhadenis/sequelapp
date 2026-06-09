@@ -9,12 +9,18 @@ export function canRequesterSeeRatings(requestUser) {
 export function sanitizeUserPayloadForRole(userPayload, role, options = {}) {
   const includeOwnRatings = Boolean(options?.includeOwnRatings);
 
-  if (!userPayload || canSeeRatingsForRole(role) || includeOwnRatings) {
+  if (!userPayload || canSeeRatingsForRole(role)) {
     return userPayload;
   }
 
   const next = { ...userPayload };
-  delete next.ratingAverage;
   delete next.initialRating;
+  delete next.manualRatingAverage;
+  delete next.stamina;
+
+  if (!includeOwnRatings) {
+    delete next.ratingAverage;
+  }
+
   return next;
 }

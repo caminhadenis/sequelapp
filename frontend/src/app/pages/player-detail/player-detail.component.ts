@@ -36,6 +36,7 @@ import { PlayerPosition, PlayerStamina, User } from '../../models/user';
 export class PlayerDetailComponent implements OnInit {
   loading = false;
   saving = false;
+  ratingSaving = false;
   playerId = '';
   player: User | null = null;
 
@@ -54,6 +55,12 @@ export class PlayerDetailComponent implements OnInit {
   readonly fieldProfileForm = this.formBuilder.group({
     position: ['', Validators.required],
     stamina: ['MEDIA', Validators.required]
+  });
+
+  readonly ratingOptions = Array.from({ length: 10 }, (_, index) => Number(((index + 1) * 0.5).toFixed(1)));
+
+  readonly globalRatingForm = this.formBuilder.group({
+    ratingAverage: [3, [Validators.required, Validators.min(0.5), Validators.max(5)]]
   });
 
   constructor(
@@ -86,6 +93,12 @@ export class PlayerDetailComponent implements OnInit {
           {
             position: user.position || '',
             stamina: user.stamina || 'MEDIA'
+          },
+          { emitEvent: false }
+        );
+        this.globalRatingForm.patchValue(
+          {
+            ratingAverage: Number(user.ratingAverage || 3)
           },
           { emitEvent: false }
         );
@@ -139,5 +152,41 @@ export class PlayerDetailComponent implements OnInit {
           });
         }
       });
+  }
+
+  saveGlobalRating(): void {
+    if (!this.authService.isAdmin || !this.playerId || this.globalRatingForm.invalid || this.ratingSaving) {
+      this.globalRatingForm.markAllAsTouched();
+      return;
+    }
+
+    const { ratingAverage } = this.globalRatingForm.getRawValue();
+    const normalizedRating = Number(ratingAverage);
+    if (!Number.isFinite(normalizedRating)) {
+      return;
+    }
+
+    this.ratingSaving = true;
+    this.userService.updateGlobalRating(this.playerId, normalizedRating).subscribe({
+      next: (response) => {
+        this.ratingSaving = false;
+        this.player = response.user;
+        this.globalRatingForm.patchValue(
+          {
+            ratingAverage: Number(response.user.ratingAverage || normalizedRating)
+          },
+          { emitEvent: false }
+        );
+        this.snackBar.open(response.message || 'Nota global atualizada.', 'Fechar', {
+          duration: 2600
+        });
+      },
+      error: (error) => {
+        this.ratingSaving = false;
+        this.snackBar.open(error?.error?.message || 'Falha ao atualizar nota global.', 'Fechar', {
+          duration: 3000
+        });
+      }
+    });
   }
 }

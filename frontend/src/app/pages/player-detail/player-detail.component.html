@@ -86,6 +86,28 @@
             </div>
           </form>
         </article>
+
+        <article class="field-profile-card">
+          <h3>Nota global</h3>
+          <p class="muted">Altere a nota média global visível para o jogador e para os ADMs.</p>
+
+          <form [formGroup]="globalRatingForm" class="field-profile-form compact-rating-form" (ngSubmit)="saveGlobalRating()">
+            <mat-form-field appearance="outline">
+              <mat-label>Nota global</mat-label>
+              <mat-select formControlName="ratingAverage">
+                @for (rating of ratingOptions; track rating) {
+                  <mat-option [value]="rating">{{ rating | number : '1.1-1' }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+
+            <div class="form-actions">
+              <button mat-flat-button color="primary" type="submit" [disabled]="ratingSaving || globalRatingForm.invalid">
+                Salvar nota global
+              </button>
+            </div>
+          </form>
+        </article>
       </section>
     } @else {
       <section class="panel">

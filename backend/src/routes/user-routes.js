@@ -122,7 +122,7 @@ function buildTopRankingByPosition(users = [], position, options = {}) {
       rank = isTie ? previous.rank : previous.rank + 1;
     }
 
-    if (rank > 3) {
+    if (rank > 5) {
       break;
     }
 
@@ -170,6 +170,10 @@ function normalizeBroadcastMessage(value) {
   return String(value || '')
     .trim()
     .replace(/\s+/g, ' ');
+}
+
+function isHalfStepRating(value) {
+  return Number.isFinite(value) && value >= 0.5 && value <= 5 && Math.abs(value * 2 - Math.round(value * 2)) < 1e-9;
 }
 
 export async function userRoutes(fastify) {
@@ -223,7 +227,6 @@ export async function userRoutes(fastify) {
 
     const { position, stamina } = request.body || {};
     const normalizedPosition = normalizePositionInput(position);
-    const normalizedStamina = normalizeStaminaInput(stamina);
 
     const updates = {};
     if (position !== undefined) {
@@ -236,16 +239,11 @@ export async function userRoutes(fastify) {
     }
 
     if (stamina !== undefined) {
-      if (!VALID_STAMINAS.includes(normalizedStamina)) {
-        return reply
-          .code(400)
-          .send({ message: 'Stamina invalida. Use BAIXA, MEDIA ou ALTA.' });
-      }
-      updates.stamina = normalizedStamina;
+      return reply.code(403).send({ message: 'Apenas ADM pode alterar stamina.' });
     }
 
     if (Object.keys(updates).length === 0) {
-      return reply.code(400).send({ message: 'Informe ao menos posicao ou stamina para atualizar.' });
+      return reply.code(400).send({ message: 'Informe a posicao para atualizar.' });
     }
 
     const user = await User.findByIdAndUpdate(
@@ -491,7 +489,7 @@ export async function userRoutes(fastify) {
       role: user.role,
       profileImageUrl: user.profileImageUrl,
       position: user.position,
-      stamina: user.stamina || 'MEDIA',
+      ...(canSeeRatings ? { stamina: user.stamina || 'MEDIA' } : {}),
       approvalStatus: user.approvalStatus || 'APPROVED',
       ...(canSeeRatings ? { ratingAverage: user.ratingAverage } : {}),
       totalGoals: user.totalGoals,
@@ -622,6 +620,47 @@ export async function userRoutes(fastify) {
 
       return {
         message: 'Perfil em campo do jogador atualizado.',
+        user: sanitizeUserPayloadForRole(user.toJSON(), request.user.role)
+      };
+    }
+  );
+
+  fastify.patch(
+    '/:id/global-rating',
+    {
+      preHandler: [authenticate, authorize('ADM')]
+    },
+    async (request, reply) => {
+      const { id } = request.params;
+      const ratingAverage = Number(request.body?.ratingAverage);
+
+      if (!isHalfStepRating(ratingAverage)) {
+        return reply
+          .code(400)
+          .send({ message: 'A nota global deve ser um numero entre 0.5 e 5.0, em intervalos de 0.5.' });
+      }
+
+      const normalizedRating = Number(ratingAverage.toFixed(1));
+      const user = await User.findOneAndUpdate(
+        {
+          _id: id,
+          role: 'JOGADOR'
+        },
+        {
+          $set: {
+            ratingAverage: normalizedRating,
+            manualRatingAverage: normalizedRating
+          }
+        },
+        { new: true }
+      );
+
+      if (!user) {
+        return reply.code(404).send({ message: 'Jogador nao encontrado.' });
+      }
+
+      return {
+        message: 'Nota global atualizada.',
         user: sanitizeUserPayloadForRole(user.toJSON(), request.user.role)
       };
     }

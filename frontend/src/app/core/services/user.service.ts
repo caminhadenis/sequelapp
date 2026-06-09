@@ -50,6 +50,12 @@ export class UserService {
     });
   }
 
+  updateGlobalRating(userId: string, ratingAverage: number): Observable<{ message: string; user: User }> {
+    return this.http.patch<{ message: string; user: User }>(`${this.apiUrl}/users/${userId}/global-rating`, {
+      ratingAverage
+    });
+  }
+
   updateMyPosition(position: PlayerPosition): Observable<{ message: string; user: User }> {
     return this.http.patch<{ message: string; user: User }>(`${this.apiUrl}/users/me/position`, {
       position

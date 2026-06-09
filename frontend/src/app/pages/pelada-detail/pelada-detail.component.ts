@@ -36,6 +36,7 @@ import {
   PresenceInfo,
   RatingCard,
   RatingCardsResponse,
+  SelectionOfRoundPlayer,
   VoteDetail
 } from '../../models/pelada';
 import { User } from '../../models/user';
@@ -135,6 +136,7 @@ export class PeladaDetailComponent implements OnInit {
   tournamentRoundGroups: Array<{ round: number; matchIndexes: number[] }> = [];
   mobileQuickNavSelection = '';
   playerStatsSearchTerm = '';
+  drawPlayersSearchTerm = '';
   lastDrawResult: TeamsDrawResponse | null = null;
   drawGuestPlayers: DrawGuestPlayer[] = [];
   readonly guestPositionOptions: Array<{ value: PlayerPosition; label: string }> = [
@@ -262,7 +264,7 @@ export class PeladaDetailComponent implements OnInit {
   }
 
   get drawSelectedRegisteredPlayers(): DrawSelectedRegisteredPlayer[] {
-    const usersById = new Map(this.users.map((user) => [String(user.id), user]));
+    const usersById = new Map(this.sortedUsersForDraw.map((user) => [String(user.id), user]));
     return this.drawSelectedPlayerIds
       .map((playerId) => {
         const user = usersById.get(String(playerId));
@@ -284,6 +286,25 @@ export class PeladaDetailComponent implements OnInit {
       })
       .filter((item): item is DrawSelectedRegisteredPlayer => Boolean(item))
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  get sortedUsersForDraw(): User[] {
+    return [...this.users].sort((left, right) =>
+      toPlayerDisplayName(left.name).localeCompare(toPlayerDisplayName(right.name), 'pt-BR')
+    );
+  }
+
+  get filteredUsersForDraw(): User[] {
+    const normalizedTerm = this.normalizeSearch(this.drawPlayersSearchTerm);
+    if (!normalizedTerm) {
+      return this.sortedUsersForDraw;
+    }
+
+    return this.sortedUsersForDraw.filter((user) => {
+      const byName = this.normalizeSearch(toPlayerDisplayName(user.name));
+      const byUsername = this.normalizeSearch(String(user.username || ''));
+      return byName.includes(normalizedTerm) || byUsername.includes(normalizedTerm);
+    });
   }
 
   get filteredStatsIndexes(): number[] {
@@ -413,6 +434,10 @@ export class PeladaDetailComponent implements OnInit {
 
     shortcuts.push({ id: 'teams-section', label: 'Times', icon: 'groups' });
 
+    if (this.pelada?.votingStatus === 'FINISHED') {
+      shortcuts.push({ id: 'selection-section', label: 'Seleção da rodada', icon: 'military_tech' });
+    }
+
     if (this.isTournament) {
       shortcuts.push({ id: 'tournament-section', label: 'Torneio', icon: 'emoji_events' });
     }
@@ -511,25 +536,43 @@ export class PeladaDetailComponent implements OnInit {
       new Set((pelada.teams || []).flatMap((team) => (team.players || []).map((player) => String(player.id))))
     );
     const teamGuestPlayers = (pelada.teams || []).flatMap((team) => team.guestPlayers || []);
+    const drawDraft = pelada.drawDraft;
+    const draftPlayerIds = Array.from(
+      new Set((drawDraft?.playerIds || []).map((playerId) => String(playerId)).filter((playerId) => allUserIds.has(playerId)))
+    );
+    const draftGuestPlayers = (drawDraft?.guestPlayers || [])
+      .map((guest, index) => ({
+        id: `draft-guest-${index + 1}`,
+        name: String(guest?.name || '').trim(),
+        rating: Number(guest?.rating || 3),
+        position: (guest?.position as PlayerPosition) || 'MEIA',
+        stamina: (guest?.stamina as PlayerStamina) || 'MEDIA'
+      }))
+      .filter((guest) => Boolean(guest.name));
 
     const validCurrentSelection = currentSelectedIds.filter((playerId) => allUserIds.has(playerId));
-    const nextPlayerIds = teamPlayerIds.length > 0 ? teamPlayerIds : validCurrentSelection;
+    const nextPlayerIds =
+      teamPlayerIds.length > 0 ? teamPlayerIds : draftPlayerIds.length > 0 ? draftPlayerIds : validCurrentSelection;
     const nextTeamCount =
       teamPlayerIds.length > 0
         ? Math.min(this.maxTeamsPerRacha, Math.max(2, (pelada.teams || []).length))
+        : drawDraft?.teamCount
+          ? Math.min(this.maxTeamsPerRacha, Math.max(2, Number(drawDraft.teamCount)))
         : this.drawTeamCount;
     const maxPlayersByTeamCount = nextTeamCount * this.maxPlayersPerTeam;
-
-    this.drawGuestPlayers =
+    const nextGuestPlayersSource =
       teamGuestPlayers.length > 0
-        ? teamGuestPlayers.slice(0, maxPlayersByTeamCount).map((guest, index) => ({
+        ? teamGuestPlayers.map((guest, index) => ({
             id: `team-guest-${index + 1}`,
             name: String(guest?.name || '').trim(),
             rating: 3,
             position: (guest?.position as PlayerPosition) || 'MEIA',
-            stamina: 'MEDIA'
+            stamina: 'MEDIA' as PlayerStamina
           }))
-        : [];
+        : draftGuestPlayers;
+
+    this.drawGuestPlayers =
+      nextGuestPlayersSource.length > 0 ? nextGuestPlayersSource.slice(0, maxPlayersByTeamCount) : [];
 
     const availableRegisteredSlots = Math.max(maxPlayersByTeamCount - this.drawGuestPlayers.length, 0);
 
@@ -544,6 +587,95 @@ export class PeladaDetailComponent implements OnInit {
       },
       { emitEvent: false }
     );
+  }
+
+  onDrawPlayersSearchChange(event: Event): void {
+    const target = event.target as HTMLInputElement | null;
+    this.drawPlayersSearchTerm = String(target?.value || '');
+  }
+
+  clearDrawPlayersSearch(): void {
+    this.drawPlayersSearchTerm = '';
+  }
+
+  isDrawPlayerSelected(playerId: string): boolean {
+    return this.drawSelectedPlayerIds.includes(String(playerId));
+  }
+
+  toggleDrawPlayerSelection(playerId: string): void {
+    if (this.actionLoading || this.isConcluded) {
+      return;
+    }
+
+    const normalizedId = String(playerId);
+    const currentSelection = this.drawSelectedPlayerIds;
+    const isSelected = currentSelection.includes(normalizedId);
+
+    if (isSelected) {
+      this.drawTeamsForm
+        .get('playerIds')
+        ?.setValue(currentSelection.filter((item) => item !== normalizedId), { emitEvent: false });
+      return;
+    }
+
+    if (this.isDrawPlayerDisabled(normalizedId)) {
+      this.snackBar.open(
+        `Limite de atletas atingido para ${this.drawTeamCount} times (${this.maxDrawPlayersCount}).`,
+        'Fechar',
+        { duration: 2800 }
+      );
+      return;
+    }
+
+    this.drawTeamsForm.get('playerIds')?.setValue([...currentSelection, normalizedId], { emitEvent: false });
+  }
+
+  selectFilteredDrawPlayers(): void {
+    if (this.actionLoading || this.isConcluded) {
+      return;
+    }
+
+    const currentSelection = this.drawSelectedPlayerIds;
+    const selectedSet = new Set(currentSelection);
+    const candidates = this.filteredUsersForDraw
+      .map((user) => String(user.id))
+      .filter((playerId) => !selectedSet.has(playerId));
+
+    if (candidates.length === 0) {
+      this.snackBar.open('Nenhum jogador novo no filtro para selecionar.', 'Fechar', {
+        duration: 2200
+      });
+      return;
+    }
+
+    const availableSlots = Math.max(
+      this.maxDrawPlayersCount - this.drawGuestPlayers.length - currentSelection.length,
+      0
+    );
+    if (availableSlots <= 0) {
+      this.snackBar.open(
+        `Limite de atletas atingido para ${this.drawTeamCount} times (${this.maxDrawPlayersCount}).`,
+        'Fechar',
+        { duration: 2800 }
+      );
+      return;
+    }
+
+    const toAdd = candidates.slice(0, availableSlots);
+    this.drawTeamsForm.get('playerIds')?.setValue([...currentSelection, ...toAdd], { emitEvent: false });
+
+    if (toAdd.length < candidates.length) {
+      this.snackBar.open(
+        `Foram adicionados ${toAdd.length} jogadores. Limite total de atletas atingido.`,
+        'Fechar',
+        { duration: 3000 }
+      );
+      return;
+    }
+
+    this.snackBar.open(`${toAdd.length} jogador(es) adicionados ao sorteio.`, 'Fechar', {
+      duration: 2200
+    });
   }
 
   onDrawTeamCountChanged(): void {
@@ -1934,13 +2066,6 @@ export class PeladaDetailComponent implements OnInit {
   }
 
   teamFieldLayout(team: PeladaDetail['teams'][number]): TeamFieldLayout {
-    const lines: Record<FieldLine, TeamFieldPlayer[]> = {
-      DEFENSE: [],
-      MIDFIELD: [],
-      ATTACK: []
-    };
-    const maxPerLine = 2;
-
     const registeredPlayers: TeamFieldPlayer[] = (team.players || []).map((player) => ({
       id: player.id,
       name: player.name,
@@ -1955,6 +2080,34 @@ export class PeladaDetailComponent implements OnInit {
       isGuest: true
     }));
     const players = [...registeredPlayers, ...guestPlayers].sort((a, b) => a.name.localeCompare(b.name));
+
+    return this.buildFieldLayout(players);
+  }
+
+  selectionOfRoundFieldLayout(): TeamFieldLayout | null {
+    const selectionPlayers = this.pelada?.selectionOfRound?.players || [];
+    if (selectionPlayers.length === 0) {
+      return null;
+    }
+
+    const players: TeamFieldPlayer[] = selectionPlayers.map((player: SelectionOfRoundPlayer) => ({
+      id: player.id,
+      name: player.name,
+      profileImageUrl: player.profileImageUrl || null,
+      position: player.position,
+      isGuest: false
+    }));
+
+    return this.buildFieldLayout(players);
+  }
+
+  private buildFieldLayout(players: TeamFieldPlayer[]): TeamFieldLayout {
+    const lines: Record<FieldLine, TeamFieldPlayer[]> = {
+      DEFENSE: [],
+      MIDFIELD: [],
+      ATTACK: []
+    };
+    const maxPerLine = 2;
     const unassigned: TeamFieldPlayer[] = [];
 
     for (const player of players) {
@@ -2466,6 +2619,15 @@ export class PeladaDetailComponent implements OnInit {
           profileImageUrl: toAbsoluteProfileImageUrl(player.profileImageUrl)
         }))
       })),
+      selectionOfRound: pelada.selectionOfRound
+        ? {
+            ...pelada.selectionOfRound,
+            players: (pelada.selectionOfRound.players || []).map((player) => ({
+              ...player,
+              profileImageUrl: toAbsoluteProfileImageUrl(player.profileImageUrl)
+            }))
+          }
+        : null,
       presence: {
         ...pelada.presence,
         entries: (pelada.presence?.entries || []).map((entry) => ({

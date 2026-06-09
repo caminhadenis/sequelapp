@@ -48,6 +48,20 @@ export interface PeladaPlayerStat {
   assists: number;
 }
 
+export interface DrawDraftGuestPlayer {
+  name: string;
+  rating: number;
+  position: PlayerPosition | null;
+  stamina: PlayerStamina;
+}
+
+export interface DrawDraft {
+  teamCount: number;
+  playerIds: string[];
+  guestPlayers: DrawDraftGuestPlayer[];
+  updatedAt: string | null;
+}
+
 export interface PresenceEntry {
   order: number;
   userId: string;
@@ -83,6 +97,20 @@ export interface CraquePodiumItem {
 export interface CraquePodium {
   totalBallots: number;
   top3: CraquePodiumItem[];
+}
+
+export interface SelectionOfRoundPlayer {
+  id: string;
+  name: string;
+  username: string;
+  profileImageUrl?: string | null;
+  position: PlayerPosition;
+}
+
+export interface SelectionOfRound {
+  isAvailable: boolean;
+  totalEligible: number;
+  players: SelectionOfRoundPlayer[];
 }
 
 export interface TournamentMatch {
@@ -129,10 +157,12 @@ export interface PeladaDetail {
   votingStatus: VotingStatus;
   teams: PeladaTeam[];
   playerStats: PeladaPlayerStat[];
+  drawDraft: DrawDraft | null;
   presence: PresenceInfo;
   votesCount: number;
   tournament: TournamentInfo | null;
   craquePodium: CraquePodium;
+  selectionOfRound: SelectionOfRound | null;
 }
 
 export interface CraqueVoteSelection {

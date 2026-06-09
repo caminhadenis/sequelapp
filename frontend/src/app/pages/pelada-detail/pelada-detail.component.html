@@ -460,6 +460,7 @@
               <p class="muted">
                 1) Defina quantidade de times. 2) Escolha atletas (cadastrados e convidados). 3) Sorteie.
               </p>
+              <p class="muted">Ao clicar em Sortear times, essa seleção fica salva neste racha.</p>
             </div>
             <span class="status-chip">
               {{ drawPoolCount }}/{{ maxDrawPlayersCount }} atletas ({{ selectedDrawPlayersCount }} cad. +
@@ -494,7 +495,7 @@
             <mat-form-field appearance="outline" class="draw-players-field">
               <mat-label>Jogadores para o sorteio</mat-label>
               <mat-select formControlName="playerIds" multiple>
-                @for (user of users; track user.id) {
+                @for (user of sortedUsersForDraw; track user.id) {
                   <mat-option [value]="user.id" [disabled]="isDrawPlayerDisabled(user.id)">
                     <span class="draw-option-name">{{ user.name | playerName }}</span>
                     <small class="draw-option-meta">{{ drawPlayerMeta(user) }}</small>
@@ -502,6 +503,62 @@
                 }
               </mat-select>
             </mat-form-field>
+
+            <div class="draw-player-filter">
+              <mat-form-field appearance="outline" class="draw-player-search-field">
+                <mat-label>Buscar jogador para o sorteio</mat-label>
+                <input
+                  matInput
+                  type="text"
+                  placeholder="Nome ou username"
+                  [value]="drawPlayersSearchTerm"
+                  (input)="onDrawPlayersSearchChange($event)"
+                />
+                @if (drawPlayersSearchTerm) {
+                  <button mat-icon-button matSuffix type="button" (click)="clearDrawPlayersSearch()">
+                    <mat-icon>close</mat-icon>
+                  </button>
+                }
+              </mat-form-field>
+
+              <div class="draw-player-filter-actions">
+                <span class="status-chip">{{ filteredUsersForDraw.length }} jogador(es) no filtro</span>
+                <button
+                  mat-stroked-button
+                  color="primary"
+                  type="button"
+                  (click)="selectFilteredDrawPlayers()"
+                  [disabled]="actionLoading || isConcluded || filteredUsersForDraw.length === 0"
+                >
+                  Selecionar filtrados
+                </button>
+              </div>
+            </div>
+
+            @if (drawPlayersSearchTerm) {
+              <div class="draw-filter-preview">
+                @if (filteredUsersForDraw.length === 0) {
+                  <small class="muted">Nenhum jogador encontrado para este filtro.</small>
+                } @else {
+                  @for (user of filteredUsersForDraw; track user.id) {
+                    <button
+                      mat-stroked-button
+                      type="button"
+                      class="draw-filter-player"
+                      [class.selected]="isDrawPlayerSelected(user.id)"
+                      (click)="toggleDrawPlayerSelection(user.id)"
+                      [disabled]="actionLoading || isConcluded"
+                    >
+                      <span class="draw-filter-player-main">
+                        <strong>{{ user.name | playerName }}</strong>
+                        <small class="draw-option-meta">{{ drawPlayerMeta(user) }}</small>
+                      </span>
+                      <mat-icon>{{ isDrawPlayerSelected(user.id) ? 'check_circle' : 'add_circle' }}</mat-icon>
+                    </button>
+                  }
+                }
+              </div>
+            }
 
             <div class="draw-guest-row">
               <mat-form-field appearance="outline" class="draw-guest-name-field">
@@ -547,39 +604,63 @@
             @if (drawSelectedRegisteredPlayers.length > 0) {
               <div class="draw-guest-list">
                 <small class="muted">Jogadores cadastrados selecionados</small>
-                <mat-chip-set>
+                <div class="draw-selection-list">
                   @for (player of drawSelectedRegisteredPlayers; track player.id) {
-                    <mat-chip
-                      [removable]="!actionLoading && !isConcluded"
-                      (removed)="removeDrawRegisteredPlayer(player.id)"
-                    >
-                      {{ player.name }} • {{ player.position }} • stamina {{ player.stamina }} • nota {{ player.rating }}
-                      <button matChipRemove [attr.aria-label]="'Remover jogador ' + player.name">
+                    <div class="draw-selection-item">
+                      <div class="draw-selection-content">
+                        <strong>{{ player.name }}</strong>
+                        <small class="muted">
+                          {{ player.position }} • stamina {{ player.stamina }} • nota {{ player.rating }}
+                        </small>
+                      </div>
+                      <button
+                        mat-icon-button
+                        color="warn"
+                        type="button"
+                        [disabled]="actionLoading || isConcluded"
+                        [attr.aria-label]="'Remover jogador ' + player.name"
+                        (click)="removeDrawRegisteredPlayer(player.id)"
+                      >
                         <mat-icon>close</mat-icon>
                       </button>
-                    </mat-chip>
+                    </div>
                   }
-                </mat-chip-set>
+                </div>
               </div>
             }
 
             @if (drawGuestPlayers.length > 0) {
               <div class="draw-guest-list">
                 <small class="muted">Convidados adicionados</small>
-                <mat-chip-set>
+                <div class="draw-selection-list">
                   @for (guest of drawGuestPlayers; track guest.id) {
-                    <mat-chip
-                      class="guest-chip"
-                      [removable]="!actionLoading && !isConcluded"
-                      (removed)="removeDrawGuestPlayer(guest.id)"
-                    >
-                      {{ drawGuestChipLabel(guest) }}
-                      <button matChipRemove [attr.aria-label]="'Remover convidado ' + guest.name">
+                    <div class="draw-selection-item guest">
+                      <div class="draw-selection-content">
+                        <strong>{{ guest.name | playerName }}</strong>
+                        <small class="muted">
+                          {{ drawPlayerPositionLabel(guest.position) }} • stamina {{ drawPlayerStaminaLabel(guest.stamina) }} • nota
+                          {{ guest.rating | number : '1.1-2' }}
+                        </small>
+                      </div>
+                      <button
+                        mat-icon-button
+                        color="warn"
+                        type="button"
+                        [disabled]="actionLoading || isConcluded"
+                        [attr.aria-label]="'Remover convidado ' + guest.name"
+                        (click)="removeDrawGuestPlayer(guest.id)"
+                      >
                         <mat-icon>close</mat-icon>
                       </button>
-                    </mat-chip>
+                    </div>
                   }
-                </mat-chip-set>
+                </div>
+              </div>
+            }
+
+            @if (drawSelectedRegisteredPlayers.length === 0 && drawGuestPlayers.length === 0) {
+              <div class="draw-guest-list draw-selection-empty">
+                <small class="muted">Nenhum atleta selecionado ainda para o sorteio.</small>
               </div>
             }
 
@@ -1084,6 +1165,81 @@
           }
         </div>
       </div>
+
+      @if (pelada.votingStatus === 'FINISHED') {
+        <div id="selection-section" class="panel selection-of-round-box section-anchor">
+          <div>
+            <h3>Seleção da Rodada</h3>
+            <p class="muted">Os 5 jogadores da formação final do racha por posição.</p>
+          </div>
+
+          @if (pelada.selectionOfRound?.isAvailable && selectionOfRoundFieldLayout(); as layout) {
+            <div class="team-pitch selection-pitch">
+              <div class="pitch-overlay" aria-hidden="true">
+                <span class="pitch-midline"></span>
+                <span class="pitch-center-circle"></span>
+                <span class="pitch-penalty pitch-penalty-top"></span>
+                <span class="pitch-goal-box pitch-goal-box-top"></span>
+                <span class="pitch-penalty pitch-penalty-bottom"></span>
+                <span class="pitch-goal-box pitch-goal-box-bottom"></span>
+              </div>
+
+              <div class="pitch-row pitch-row-attack">
+                <div class="pitch-buttons">
+                  @for (player of layout.attack; track player.id) {
+                    <span class="field-player" [attr.title]="player.name">
+                      <span class="button-player">
+                        @if (player.profileImageUrl) {
+                          <img [src]="player.profileImageUrl" alt="Foto de {{ player.name | playerName }}" />
+                        } @else {
+                          <mat-icon>person</mat-icon>
+                        }
+                      </span>
+                      <small class="field-player-name">{{ playerShortName(player.name) }}</small>
+                    </span>
+                  }
+                </div>
+              </div>
+
+              <div class="pitch-row pitch-row-midfield">
+                <div class="pitch-buttons">
+                  @for (player of layout.midfield; track player.id) {
+                    <span class="field-player" [attr.title]="player.name">
+                      <span class="button-player">
+                        @if (player.profileImageUrl) {
+                          <img [src]="player.profileImageUrl" alt="Foto de {{ player.name | playerName }}" />
+                        } @else {
+                          <mat-icon>person</mat-icon>
+                        }
+                      </span>
+                      <small class="field-player-name">{{ playerShortName(player.name) }}</small>
+                    </span>
+                  }
+                </div>
+              </div>
+
+              <div class="pitch-row pitch-row-defense">
+                <div class="pitch-buttons">
+                  @for (player of layout.defense; track player.id) {
+                    <span class="field-player" [attr.title]="player.name">
+                      <span class="button-player">
+                        @if (player.profileImageUrl) {
+                          <img [src]="player.profileImageUrl" alt="Foto de {{ player.name | playerName }}" />
+                        } @else {
+                          <mat-icon>person</mat-icon>
+                        }
+                      </span>
+                      <small class="field-player-name">{{ playerShortName(player.name) }}</small>
+                    </span>
+                  }
+                </div>
+              </div>
+            </div>
+          } @else {
+            <p class="muted">Ainda não há notas suficientes para montar a seleção da rodada.</p>
+          }
+        </div>
+      }
 
       @if (ratingCards.length === 0) {
         <p class="muted">Ainda não há jogadores disponíveis para votação neste racha.</p>

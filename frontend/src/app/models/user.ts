@@ -15,6 +15,7 @@ export interface User {
   createdAt?: string;
   initialRating?: number | null;
   ratingAverage?: number | null;
+  manualRatingAverage?: number | null;
   totalGoals: number;
   totalAssists: number;
   totalWins: number;

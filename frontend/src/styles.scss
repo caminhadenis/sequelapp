@@ -305,6 +305,115 @@ app-pelada-detail .draw-guest-list .mdc-evolution-chip__text-label {
   line-height: 1.2;
 }
 
+app-pelada-detail .draw-player-filter {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+app-pelada-detail .draw-player-search-field {
+  width: min(420px, 100%);
+}
+
+app-pelada-detail .draw-player-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+app-pelada-detail .draw-filter-preview {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+app-pelada-detail .draw-filter-player {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+
+app-pelada-detail .draw-filter-player-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+app-pelada-detail .draw-filter-player.selected {
+  border-color: #7c3aed;
+  background: linear-gradient(90deg, #f3e8ff, #fff3e8);
+}
+
+app-pelada-detail .draw-filter-player .mat-icon {
+  color: #7c3aed;
+}
+
+app-pelada-detail .draw-selection-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+app-pelada-detail .draw-selection-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid #e5d2fa;
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px 10px;
+}
+
+app-pelada-detail .draw-selection-item.guest {
+  background: linear-gradient(90deg, #faf4ff, #fff5ea);
+}
+
+app-pelada-detail .draw-selection-content {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+app-pelada-detail .draw-selection-content strong,
+app-pelada-detail .draw-selection-content small {
+  overflow-wrap: anywhere;
+}
+
+app-pelada-detail .draw-selection-empty {
+  display: flex;
+  align-items: center;
+  min-height: 46px;
+}
+
+app-pelada-detail .selection-of-round-box {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+  background:
+    linear-gradient(160deg, rgba(124, 58, 237, 0.08), rgba(249, 115, 22, 0.08)),
+    #fff;
+}
+
+app-pelada-detail .selection-of-round-box h3 {
+  margin: 0 0 4px;
+}
+
+app-pelada-detail .selection-pitch {
+  width: min(430px, 100%);
+  margin-inline: auto;
+}
+
 @media (max-width: 860px) {
   app-pelada-detail .vote-title-row .form-actions {
     width: 100%;
@@ -322,6 +431,23 @@ app-pelada-detail .draw-guest-list .mdc-evolution-chip__text-label {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: end;
     gap: 8px;
+  }
+
+  app-pelada-detail .draw-player-search-field {
+    width: 100%;
+  }
+
+  app-pelada-detail .draw-player-filter-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  app-pelada-detail .draw-filter-preview {
+    max-height: 220px;
+  }
+
+  app-pelada-detail .draw-selection-item {
+    padding: 8px;
   }
 }
 

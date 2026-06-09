@@ -81,13 +81,23 @@ function applyFinalCraqueTop3Stats(totals, top3 = []) {
 }
 
 export async function recalculateAllUsersStats() {
-  const users = await User.find({}, '_id initialRating').lean();
+  const users = await User.find({}, '_id initialRating manualRatingAverage').lean();
 
   const totals = new Map();
   const ratings = new Map();
 
   for (const user of users) {
     const key = toIdString(user._id);
+    const rawManualRatingAverage = user.manualRatingAverage;
+    const manualRatingAverage =
+      rawManualRatingAverage !== null &&
+      rawManualRatingAverage !== undefined &&
+      Number.isFinite(Number(rawManualRatingAverage)) &&
+      Number(rawManualRatingAverage) >= 0.5 &&
+      Number(rawManualRatingAverage) <= 5
+        ? Number(rawManualRatingAverage)
+        : null;
+
     totals.set(key, {
       totalGoals: 0,
       totalAssists: 0,
@@ -99,7 +109,8 @@ export async function recalculateAllUsersStats() {
       totalCraqueSecondPlaces: 0,
       totalCraqueThirdPlaces: 0,
       totalTournamentTitles: 0,
-      initialRating: Number(user.initialRating || 3)
+      initialRating: Number(user.initialRating || 3),
+      manualRatingAverage
     });
     ratings.set(key, {
       sum: 0,
@@ -179,9 +190,11 @@ export async function recalculateAllUsersStats() {
   for (const [userId, stat] of totals.entries()) {
     const rating = ratings.get(userId);
     const ratingAverage =
-      rating && rating.count > 0
-        ? Number((rating.sum / rating.count).toFixed(2))
-        : stat.initialRating;
+      stat.manualRatingAverage !== null
+        ? stat.manualRatingAverage
+        : rating && rating.count > 0
+          ? Number((rating.sum / rating.count).toFixed(2))
+          : stat.initialRating;
 
     operations.push({
       updateOne: {

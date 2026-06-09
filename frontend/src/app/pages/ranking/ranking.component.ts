@@ -19,9 +19,11 @@ import { toAbsoluteProfileImageUrl } from '../../shared/utils/profile-image';
 
 type PodiumMetric = 'goals' | 'assists' | 'titles' | 'wins' | 'craqueTop3';
 type PodiumTieBreak = 'LESS_GAMES' | 'MORE_GAMES' | 'RATING' | 'CRAQUE_OLYMPIC';
+type RankingRank = 1 | 2 | 3 | 4 | 5;
+type PodiumRank = 1 | 2 | 3;
 
 interface PodiumEntry {
-  rank: 1 | 2 | 3;
+  rank: RankingRank;
   userId: string;
   userName: string;
   username: string;
@@ -31,7 +33,7 @@ interface PodiumEntry {
 }
 
 interface PodiumSlot {
-  rank: 1 | 2 | 3;
+  rank: PodiumRank;
   entries: PodiumEntry[];
 }
 
@@ -41,12 +43,13 @@ interface PodiumCategory {
   subtitle: string;
   icon: string;
   unit: string;
-  topThree: PodiumEntry[];
+  topEntries: PodiumEntry[];
   slots: PodiumSlot[];
+  continuationEntries: PodiumEntry[];
 }
 
 interface PositionPodiumRankGroup {
-  rank: 1 | 2 | 3;
+  rank: RankingRank;
   players: PositionRankingEntry[];
 }
 
@@ -202,7 +205,7 @@ export class RankingComponent implements OnInit {
     const goals = this.buildPodiumCategory({
       metric: 'goals',
       title: 'Artilheiros',
-      subtitle: 'Top 3 em gols no histórico (desempate: menos rachas)',
+      subtitle: 'Top 5 em gols no histórico (desempate: menos rachas)',
       icon: 'sports_soccer',
       unit: 'gols',
       metricValue: (user) => Number(user.totalGoals || 0),
@@ -212,7 +215,7 @@ export class RankingComponent implements OnInit {
     const assists = this.buildPodiumCategory({
       metric: 'assists',
       title: 'Garçons',
-      subtitle: 'Top 3 em assistências (desempate: menos rachas)',
+      subtitle: 'Top 5 em assistências (desempate: menos rachas)',
       icon: 'assistant',
       unit: 'assistências',
       metricValue: (user) => Number(user.totalAssists || 0),
@@ -222,7 +225,7 @@ export class RankingComponent implements OnInit {
     const titles = this.buildPodiumCategory({
       metric: 'titles',
       title: 'Campeões',
-      subtitle: 'Top 3 em títulos de torneio',
+      subtitle: 'Top 5 em títulos de torneio',
       icon: 'emoji_events',
       unit: 'títulos',
       metricValue: (user) => Number(user.totalTournamentTitles || 0),
@@ -232,7 +235,7 @@ export class RankingComponent implements OnInit {
     const wins = this.buildPodiumCategory({
       metric: 'wins',
       title: 'Mais Vitórias',
-      subtitle: 'Top 3 em vitórias (desempate: menos rachas)',
+      subtitle: 'Top 5 em vitórias (desempate: menos rachas)',
       icon: 'military_tech',
       unit: 'vitórias',
       metricValue: (user) => Number(user.totalWins || 0),
@@ -242,7 +245,7 @@ export class RankingComponent implements OnInit {
     const craqueTop3 = this.buildPodiumCategory({
       metric: 'craqueTop3',
       title: 'Presença no Top 3 Craque',
-      subtitle: 'Top 3 de participações no pódio de craque (desempate olímpico: 1º, 2º, 3º)',
+      subtitle: 'Top 5 de participações no pódio de craque (desempate olímpico: 1º, 2º, 3º)',
       icon: 'workspace_premium',
       unit: 'participações',
       metricValue: (user) => this.totalCraqueTop3Participations(user),
@@ -264,19 +267,20 @@ export class RankingComponent implements OnInit {
     tieBreak: PodiumTieBreak;
     secondaryLabel?: (user: User) => string;
   }): PodiumCategory {
-    const topThree = this.getTopThreeEntries(config.metricValue, config.tieBreak, config.secondaryLabel);
+    const topEntries = this.getTopRankingEntries(config.metricValue, config.tieBreak, config.secondaryLabel);
     return {
       metric: config.metric,
       title: config.title,
       subtitle: config.subtitle,
       icon: config.icon,
       unit: config.unit,
-      topThree,
-      slots: this.buildPodiumSlots(topThree)
+      topEntries,
+      slots: this.buildPodiumSlots(topEntries),
+      continuationEntries: topEntries.filter((entry) => entry.rank >= 4)
     };
   }
 
-  private getTopThreeEntries(
+  private getTopRankingEntries(
     metricValue: (user: User) => number,
     tieBreak: PodiumTieBreak,
     secondaryLabel?: (user: User) => string
@@ -303,7 +307,7 @@ export class RankingComponent implements OnInit {
       });
 
     const ranking: PodiumEntry[] = [];
-    let previous: { metric: number; tieBreakKey: string; rank: 1 | 2 | 3 } | null = null;
+    let previous: { metric: number; tieBreakKey: string; rank: RankingRank } | null = null;
 
     for (let index = 0; index < sorted.length; index += 1) {
       const item = sorted[index];
@@ -314,11 +318,11 @@ export class RankingComponent implements OnInit {
         rank = isTie ? previous.rank : previous.rank + 1;
       }
 
-      if (rank > 3) {
+      if (rank > 5) {
         break;
       }
 
-      const normalizedRank = rank as 1 | 2 | 3;
+      const normalizedRank = rank as RankingRank;
       ranking.push({
         rank: normalizedRank,
         userId: item.user.id,
@@ -340,7 +344,7 @@ export class RankingComponent implements OnInit {
   }
 
   private buildPodiumSlots(entries: PodiumEntry[]): PodiumSlot[] {
-    const rankOrder: Array<1 | 2 | 3> = [2, 1, 3];
+    const rankOrder: PodiumRank[] = [2, 1, 3];
     return rankOrder.map((rank) => ({
       rank,
       entries: this.findByRank(entries, rank)
@@ -377,15 +381,15 @@ export class RankingComponent implements OnInit {
     const minimumGames = Number(byPosition?.minimumGames || 0);
 
     if (totalHappenedRachas <= 0 || minimumGames <= 0) {
-      return 'Top 3 por nota média (desempate: mais rachas)';
+      return 'Top 5 por nota média (desempate: mais rachas)';
     }
 
     const rachaLabel = minimumGames === 1 ? 'racha' : 'rachas';
-    return `Top 3 por nota média (mínimo ${minimumGames} ${rachaLabel} = 25% de ${totalHappenedRachas})`;
+    return `Top 5 por nota média (mínimo ${minimumGames} ${rachaLabel} = 25% de ${totalHappenedRachas})`;
   }
 
   private buildPositionRankGroups(entries: PositionRankingEntry[]): PositionPodiumRankGroup[] {
-    const rankOrder: Array<1 | 2 | 3> = [1, 2, 3];
+    const rankOrder: RankingRank[] = [1, 2, 3, 4, 5];
     return rankOrder.map((rank) => ({
       rank,
       players: entries.filter((entry) => entry.rank === rank)
@@ -465,16 +469,16 @@ export class RankingComponent implements OnInit {
     );
   }
 
-  private findByRank(entries: PodiumEntry[], rank: 1 | 2 | 3): PodiumEntry[] {
+  private findByRank(entries: PodiumEntry[], rank: RankingRank): PodiumEntry[] {
     return entries.filter((entry) => entry.rank === rank);
   }
 
-  private toRank(value: number): 1 | 2 | 3 {
-    if (value === 1 || value === 2 || value === 3) {
+  private toRank(value: number): RankingRank {
+    if (value === 1 || value === 2 || value === 3 || value === 4 || value === 5) {
       return value;
     }
 
-    return 3;
+    return 5;
   }
 
   private normalize(value: string): string {
