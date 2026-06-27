@@ -10,6 +10,7 @@ import {
 } from '../utils/tournament.js';
 import { drawBalancedTeams } from '../utils/team-draw.js';
 import { sendPushNotificationToUsers } from '../utils/push-notification.js';
+import { summarizeRachaRatings } from '../utils/rating-average.js';
 import { canRequesterSeeRatings } from '../utils/user-visibility.js';
 import { buildSelectionOfRound } from '../utils/selection-of-round.js';
 
@@ -904,13 +905,9 @@ export async function peladaRoutes(fastify) {
           .send({ message: 'Cadastre os times da pelada antes de abrir votacao.' });
       }
 
-      const previousVotingStatus = pelada.votingStatus || 'CLOSED';
       pelada.votingStatus = 'OPEN';
       clearCraqueResultSnapshot(pelada);
       await pelada.save();
-      if (previousVotingStatus === 'FINISHED') {
-        await recalculateAllUsersStats();
-      }
 
       const participants = getParticipantIdSet(pelada);
       const notificationDateLabel = formatRachaDateLabel(pelada.date);
@@ -1199,7 +1196,6 @@ export async function peladaRoutes(fastify) {
     });
 
     await pelada.save();
-    await recalculateAllUsersStats();
 
     return reply.code(201).send({ message: 'Nota registrada com sucesso.' });
   });
@@ -1395,15 +1391,7 @@ export async function peladaRoutes(fastify) {
       .filter((vote) => String(vote.toUser) === currentUserId)
       .map((vote) => Number(vote.score || 0));
 
-    const myMatchRating =
-      votesReceivedByCurrentUser.length > 0
-        ? Number(
-            (
-              votesReceivedByCurrentUser.reduce((sum, score) => sum + score, 0) /
-              votesReceivedByCurrentUser.length
-            ).toFixed(2)
-          )
-        : null;
+    const myMatchRating = summarizeRachaRatings(votesReceivedByCurrentUser).average;
 
     const cards = participantIds
       .map((participantId) => {

@@ -1,5 +1,6 @@
 import { Pelada } from '../models/Pelada.js';
 import { User } from '../models/User.js';
+import { calculateRatingAverage, trimExtremeRatings } from '../utils/rating-average.js';
 import { buildTournamentInfo } from '../utils/tournament.js';
 
 function toIdString(id) {
@@ -81,7 +82,11 @@ function applyFinalCraqueTop3Stats(totals, top3 = []) {
 }
 
 export async function recalculateAllUsersStats() {
-  const users = await User.find({}, '_id initialRating manualRatingAverage').lean();
+  const recalculationStartedAt = new Date();
+  const users = await User.find(
+    {},
+    '_id initialRating manualRatingAverage manualRatingBaseCount manualRatingSetAt updatedAt'
+  ).lean();
 
   const totals = new Map();
   const ratings = new Map();
@@ -97,6 +102,19 @@ export async function recalculateAllUsersStats() {
       Number(rawManualRatingAverage) <= 5
         ? Number(rawManualRatingAverage)
         : null;
+    const rawManualRatingSetAt = user.manualRatingSetAt || user.updatedAt || recalculationStartedAt;
+    const parsedManualRatingSetAt = new Date(rawManualRatingSetAt);
+    const manualRatingSetAt =
+      manualRatingAverage !== null && !Number.isNaN(parsedManualRatingSetAt.getTime())
+        ? parsedManualRatingSetAt
+        : null;
+    const rawManualRatingBaseCount = Number(user.manualRatingBaseCount);
+    const manualRatingBaseCount =
+      manualRatingAverage !== null &&
+      Number.isInteger(rawManualRatingBaseCount) &&
+      rawManualRatingBaseCount >= 1
+        ? rawManualRatingBaseCount
+        : null;
 
     totals.set(key, {
       totalGoals: 0,
@@ -110,11 +128,15 @@ export async function recalculateAllUsersStats() {
       totalCraqueThirdPlaces: 0,
       totalTournamentTitles: 0,
       initialRating: Number(user.initialRating || 3),
-      manualRatingAverage
+      manualRatingAverage,
+      manualRatingBaseCount,
+      manualRatingSetAt
     });
     ratings.set(key, {
       sum: 0,
-      count: 0
+      count: 0,
+      futureSum: 0,
+      futureCount: 0
     });
   }
 
@@ -145,16 +167,40 @@ export async function recalculateAllUsersStats() {
       stat.totalAssists += Number(playerStat.assists || 0);
     }
 
-    for (const vote of pelada.votes || []) {
-      const key = toIdString(vote.toUser);
-      const rating = ratings.get(key);
-      if (!rating) continue;
-
-      rating.sum += Number(vote.score || 0);
-      rating.count += 1;
-    }
-
     if ((pelada.votingStatus || 'CLOSED') === 'FINISHED') {
+      const votesByTarget = new Map();
+      for (const vote of pelada.votes || []) {
+        const key = toIdString(vote.toUser);
+        if (!ratings.has(key)) continue;
+
+        if (!votesByTarget.has(key)) {
+          votesByTarget.set(key, []);
+        }
+        votesByTarget.get(key).push(vote);
+      }
+
+      for (const [key, receivedVotes] of votesByTarget.entries()) {
+        const rating = ratings.get(key);
+        const stat = totals.get(key);
+
+        for (const vote of trimExtremeRatings(receivedVotes)) {
+          const score = Number(vote.score || 0);
+          rating.sum += score;
+          rating.count += 1;
+
+          const voteCreatedAt = new Date(vote.createdAt);
+          if (
+            stat?.manualRatingAverage !== null &&
+            stat?.manualRatingSetAt &&
+            !Number.isNaN(voteCreatedAt.getTime()) &&
+            voteCreatedAt.getTime() > stat.manualRatingSetAt.getTime()
+          ) {
+            rating.futureSum += score;
+            rating.futureCount += 1;
+          }
+        }
+      }
+
       if (pelada.craqueResult?.top3?.length) {
         applyFinalCraqueTop3Stats(totals, pelada.craqueResult.top3);
       } else {
@@ -189,12 +235,15 @@ export async function recalculateAllUsersStats() {
 
   for (const [userId, stat] of totals.entries()) {
     const rating = ratings.get(userId);
-    const ratingAverage =
-      stat.manualRatingAverage !== null
-        ? stat.manualRatingAverage
-        : rating && rating.count > 0
-          ? Number((rating.sum / rating.count).toFixed(2))
-          : stat.initialRating;
+    const ratingResult = calculateRatingAverage({
+      initialRating: stat.initialRating,
+      allVotesSum: rating?.sum || 0,
+      allVotesCount: rating?.count || 0,
+      manualRatingAverage: stat.manualRatingAverage,
+      manualRatingBaseCount: stat.manualRatingBaseCount,
+      futureVotesSum: rating?.futureSum || 0,
+      futureVotesCount: rating?.futureCount || 0
+    });
 
     operations.push({
       updateOne: {
@@ -211,7 +260,13 @@ export async function recalculateAllUsersStats() {
             totalCraqueSecondPlaces: stat.totalCraqueSecondPlaces,
             totalCraqueThirdPlaces: stat.totalCraqueThirdPlaces,
             totalTournamentTitles: stat.totalTournamentTitles,
-            ratingAverage
+            ratingAverage: ratingResult.ratingAverage,
+            ...(stat.manualRatingAverage !== null
+              ? {
+                  manualRatingBaseCount: ratingResult.manualRatingBaseCount,
+                  manualRatingSetAt: stat.manualRatingSetAt
+                }
+              : {})
           }
         }
       }

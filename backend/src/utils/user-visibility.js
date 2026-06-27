@@ -16,6 +16,8 @@ export function sanitizeUserPayloadForRole(userPayload, role, options = {}) {
   const next = { ...userPayload };
   delete next.initialRating;
   delete next.manualRatingAverage;
+  delete next.manualRatingBaseCount;
+  delete next.manualRatingSetAt;
   delete next.stamina;
 
   if (!includeOwnRatings) {

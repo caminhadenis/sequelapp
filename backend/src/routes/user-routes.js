@@ -7,6 +7,7 @@ import {
   saveProfileImageFromDataUrl
 } from '../utils/profile-image.js';
 import { isWebPushConfigured, sendPushNotificationToUsers } from '../utils/push-notification.js';
+import { trimExtremeRatings } from '../utils/rating-average.js';
 import {
   canRequesterSeeRatings,
   sanitizeUserPayloadForRole
@@ -172,8 +173,8 @@ function normalizeBroadcastMessage(value) {
     .replace(/\s+/g, ' ');
 }
 
-function isHalfStepRating(value) {
-  return Number.isFinite(value) && value >= 0.5 && value <= 5 && Math.abs(value * 2 - Math.round(value * 2)) < 1e-9;
+function isTenthStepRating(value) {
+  return Number.isFinite(value) && value >= 0.5 && value <= 5 && Math.abs(value * 10 - Math.round(value * 10)) < 1e-9;
 }
 
 export async function userRoutes(fastify) {
@@ -634,33 +635,48 @@ export async function userRoutes(fastify) {
       const { id } = request.params;
       const ratingAverage = Number(request.body?.ratingAverage);
 
-      if (!isHalfStepRating(ratingAverage)) {
+      if (!isTenthStepRating(ratingAverage)) {
         return reply
           .code(400)
-          .send({ message: 'A nota global deve ser um numero entre 0.5 e 5.0, em intervalos de 0.5.' });
+          .send({ message: 'A nota global deve ser um numero entre 0.5 e 5.0, em intervalos de 0.1.' });
       }
 
       const normalizedRating = Number(ratingAverage.toFixed(1));
-      const user = await User.findOneAndUpdate(
-        {
-          _id: id,
-          role: 'JOGADOR'
-        },
-        {
-          $set: {
-            ratingAverage: normalizedRating,
-            manualRatingAverage: normalizedRating
-          }
-        },
-        { new: true }
-      );
+      const user = await User.findOne({
+        _id: id,
+        role: 'JOGADOR'
+      });
 
       if (!user) {
         return reply.code(404).send({ message: 'Jogador nao encontrado.' });
       }
 
+      const peladasWithVotes = await Pelada.find(
+        {
+          votingStatus: 'FINISHED',
+          'votes.toUser': user._id
+        },
+        'votes.toUser votes.score'
+      ).lean();
+      const existingVoteCount = peladasWithVotes.reduce(
+        (total, pelada) =>
+          total +
+          trimExtremeRatings(
+            (pelada.votes || []).filter(
+              (vote) => String(vote.toUser) === String(user._id)
+            )
+          ).length,
+        0
+      );
+
+      user.ratingAverage = normalizedRating;
+      user.manualRatingAverage = normalizedRating;
+      user.manualRatingBaseCount = Math.max(existingVoteCount, 1);
+      user.manualRatingSetAt = new Date();
+      await user.save();
+
       return {
-        message: 'Nota global atualizada.',
+        message: 'Nota global atualizada. Novas avaliações serão incorporadas a esta média.',
         user: sanitizeUserPayloadForRole(user.toJSON(), request.user.role)
       };
     }
@@ -711,7 +727,14 @@ export async function userRoutes(fastify) {
 
       const user = await User.findByIdAndUpdate(
         id,
-        { $set: { initialRating, ratingAverage: initialRating } },
+        {
+          $set: { initialRating, ratingAverage: initialRating },
+          $unset: {
+            manualRatingAverage: '',
+            manualRatingBaseCount: '',
+            manualRatingSetAt: ''
+          }
+        },
         { new: true }
       );
 

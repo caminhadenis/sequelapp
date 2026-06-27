@@ -89,7 +89,9 @@
 
         <article class="field-profile-card">
           <h3>Nota global</h3>
-          <p class="muted">Altere a nota média global visível para o jogador e para os ADMs.</p>
+          <p class="muted">
+            A nota definida substitui a média atual. Novas avaliações passam a atualizá-la quando a votação do racha for finalizada.
+          </p>
 
           <form [formGroup]="globalRatingForm" class="field-profile-form compact-rating-form" (ngSubmit)="saveGlobalRating()">
             <mat-form-field appearance="outline">

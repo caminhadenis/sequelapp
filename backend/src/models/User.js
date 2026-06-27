@@ -102,6 +102,15 @@ const userSchema = new mongoose.Schema(
       max: 5,
       default: null
     },
+    manualRatingBaseCount: {
+      type: Number,
+      min: 1,
+      default: null
+    },
+    manualRatingSetAt: {
+      type: Date,
+      default: null
+    },
     totalGoals: {
       type: Number,
       default: 0

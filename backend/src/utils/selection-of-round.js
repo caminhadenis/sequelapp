@@ -1,3 +1,5 @@
+import { summarizeRachaRatings } from './rating-average.js';
+
 const VALID_POSITIONS = ['ZAGUEIRO', 'MEIA', 'ATACANTE'];
 
 function toIdString(value) {
@@ -178,22 +180,21 @@ export function buildSelectionOfRound(pelada) {
       continue;
     }
 
-    const current = voteStats.get(targetId) || { sum: 0, count: 0 };
-    current.sum += score;
-    current.count += 1;
+    const current = voteStats.get(targetId) || [];
+    current.push(score);
     voteStats.set(targetId, current);
   }
 
   const candidates = Array.from(participantsById.values())
     .map((player) => {
-      const rating = voteStats.get(player.id);
-      if (!rating || rating.count <= 0) {
+      const rating = summarizeRachaRatings(voteStats.get(player.id) || []);
+      if (rating.count <= 0) {
         return null;
       }
 
       return {
         ...player,
-        average: rating.sum / rating.count,
+        average: rating.average,
         votesCount: rating.count
       };
     })

@@ -57,7 +57,7 @@ export class PlayerDetailComponent implements OnInit {
     stamina: ['MEDIA', Validators.required]
   });
 
-  readonly ratingOptions = Array.from({ length: 10 }, (_, index) => Number(((index + 1) * 0.5).toFixed(1)));
+  readonly ratingOptions = Array.from({ length: 46 }, (_, index) => Number((0.5 + index * 0.1).toFixed(1)));
 
   readonly globalRatingForm = this.formBuilder.group({
     ratingAverage: [3, [Validators.required, Validators.min(0.5), Validators.max(5)]]
@@ -98,7 +98,7 @@ export class PlayerDetailComponent implements OnInit {
         );
         this.globalRatingForm.patchValue(
           {
-            ratingAverage: Number(user.ratingAverage || 3)
+            ratingAverage: this.editableGlobalRating(user.ratingAverage)
           },
           { emitEvent: false }
         );
@@ -188,5 +188,14 @@ export class PlayerDetailComponent implements OnInit {
         });
       }
     });
+  }
+
+  private editableGlobalRating(value: unknown): number {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) {
+      return 3;
+    }
+
+    return Number(Math.min(5, Math.max(0.5, Math.round(numericValue * 10) / 10)).toFixed(1));
   }
 }
