@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 import {
   AbstractControl,
   ReactiveFormsModule,
@@ -81,6 +81,26 @@ interface QuickNavShortcut {
   icon: string;
 }
 
+interface GameEffect {
+  tone: 'goal' | 'assist' | 'rating-low' | 'rating-high' | 'rating-mid';
+  icon: string;
+  title: string;
+  subtitle: string;
+}
+
+interface SavedTeamResult {
+  teamId: string;
+  wins: number;
+  draws: number;
+  losses: number;
+}
+
+interface SavedPlayerStat {
+  playerId: string;
+  goals: number;
+  assists: number;
+}
+
 function maxLengthArrayValidator(length: number) {
   return (control: AbstractControl): ValidationErrors | null => {
     const value = control.value;
@@ -113,7 +133,7 @@ function maxLengthArrayValidator(length: number) {
   templateUrl: './pelada-detail.component.html',
   styleUrls: ['./pelada-detail.component.scss']
 })
-export class PeladaDetailComponent implements OnInit {
+export class PeladaDetailComponent implements OnInit, OnDestroy {
   peladaId = '';
   pelada: PeladaDetail | null = null;
   users: User[] = [];
@@ -122,6 +142,8 @@ export class PeladaDetailComponent implements OnInit {
   actionLoading = false;
   exportingTeamsImage = false;
   exportingDrawOptionsImage = false;
+  gameEffect: GameEffect | null = null;
+  private gameEffectTimer: ReturnType<typeof setTimeout> | null = null;
 
   ratingCards: RatingCard[] = [];
   myMatchRating: number | null = null;
@@ -326,6 +348,18 @@ export class PeladaDetailComponent implements OnInit {
       });
   }
 
+  statGoalsValue(index: number): number {
+    return Number(this.statsArray.at(index)?.get('goals')?.value || 0);
+  }
+
+  statAssistsValue(index: number): number {
+    return Number(this.statsArray.at(index)?.get('assists')?.value || 0);
+  }
+
+  statImpactTotal(index: number): number {
+    return this.statGoalsValue(index) + this.statAssistsValue(index);
+  }
+
   get isTournament(): boolean {
     return (this.pelada?.type || 'NORMAL') === 'TOURNAMENT';
   }
@@ -456,6 +490,12 @@ export class PeladaDetailComponent implements OnInit {
     }
 
     this.loadData();
+  }
+
+  ngOnDestroy(): void {
+    if (this.gameEffectTimer) {
+      clearTimeout(this.gameEffectTimer);
+    }
   }
 
   get isConcluded(): boolean {
@@ -1577,12 +1617,19 @@ export class PeladaDetailComponent implements OnInit {
       return;
     }
 
+    const payload = this.resultsArray.getRawValue().map((item: SavedTeamResult) => ({
+      teamId: String(item.teamId),
+      wins: Number(item.wins || 0),
+      draws: Number(item.draws || 0),
+      losses: Number(item.losses || 0)
+    }));
+
     this.actionLoading = true;
-    this.peladaService.updateResults(this.peladaId, this.resultsArray.getRawValue()).subscribe({
+    this.peladaService.updateResults(this.peladaId, payload).subscribe({
       next: () => {
+        this.applySavedResults(payload);
         this.snackBar.open('Resultados atualizados.', 'Fechar', { duration: 2200 });
         this.actionLoading = false;
-        this.loadData();
       },
       error: (error) => {
         this.actionLoading = false;
@@ -1661,8 +1708,8 @@ export class PeladaDetailComponent implements OnInit {
       return;
     }
 
-    const payload = this.statsArray.getRawValue().map((item: { playerId: string; goals: number; assists: number }) => ({
-      playerId: item.playerId,
+    const payload = this.statsArray.getRawValue().map((item: SavedPlayerStat) => ({
+      playerId: String(item.playerId),
       goals: Number(item.goals || 0),
       assists: Number(item.assists || 0)
     }));
@@ -1670,9 +1717,15 @@ export class PeladaDetailComponent implements OnInit {
     this.actionLoading = true;
     this.peladaService.updatePlayerStats(this.peladaId, payload).subscribe({
       next: () => {
+        this.applySavedPlayerStats(payload);
+        this.triggerGameEffect({
+          tone: 'goal',
+          icon: 'sports_soccer',
+          title: 'PLACAR SALVO',
+          subtitle: 'Gols e assistências atualizados no racha.'
+        });
         this.snackBar.open('Gols e assistências atualizados.', 'Fechar', { duration: 2200 });
         this.actionLoading = false;
-        this.loadData();
       },
       error: (error) => {
         this.actionLoading = false;
@@ -1690,6 +1743,30 @@ export class PeladaDetailComponent implements OnInit {
 
   clearPlayerStatsSearch(): void {
     this.playerStatsSearchTerm = '';
+  }
+
+  onScoreInputChange(kind: 'goal' | 'assist', index: number, value: number): void {
+    const numericValue = Number(value || 0);
+    if (numericValue <= 0) {
+      return;
+    }
+
+    const playerName = toPlayerDisplayName(String(this.statsArray.at(index)?.get('playerName')?.value || 'Jogador'));
+    this.triggerGameEffect(
+      kind === 'goal'
+        ? {
+            tone: 'goal',
+            icon: 'sports_soccer',
+            title: 'GOOOL!',
+            subtitle: `${playerName} chegou a ${numericValue} gol(s) no racha.`
+          }
+        : {
+            tone: 'assist',
+            icon: 'sports',
+            title: 'PASSE DECISIVO!',
+            subtitle: `${playerName} chegou a ${numericValue} assistência(s).`
+          }
+    );
   }
 
   savePresenceConfig(): void {
@@ -1847,6 +1924,7 @@ export class PeladaDetailComponent implements OnInit {
     this.actionLoading = true;
     this.peladaService.vote(this.peladaId, card.playerId, score).subscribe({
       next: () => {
+        this.triggerRatingEffect(score, card.name);
         this.snackBar.open('Nota registrada.', 'Fechar', { duration: 2200 });
         this.applySuccessfulVote(card.playerId);
         this.actionLoading = false;
@@ -1903,6 +1981,7 @@ export class PeladaDetailComponent implements OnInit {
     this.actionLoading = true;
     this.peladaService.vote(this.peladaId, currentCard.playerId, score).subscribe({
       next: () => {
+        this.triggerRatingEffect(score, currentCard.name);
         this.snackBar.open(`Nota registrada para ${toPlayerDisplayName(currentCard.name)}.`, 'Fechar', {
           duration: 1800
         });
@@ -1942,6 +2021,97 @@ export class PeladaDetailComponent implements OnInit {
         votesCount: Number(this.pelada.votesCount || 0) + 1
       };
     }
+  }
+
+  private applySavedResults(results: SavedTeamResult[]): void {
+    if (!this.pelada) {
+      return;
+    }
+
+    const resultsByTeamId = new Map(results.map((result) => [String(result.teamId), result]));
+    this.pelada = {
+      ...this.pelada,
+      teams: this.pelada.teams.map((team) => {
+        const result = resultsByTeamId.get(String(team.id));
+        return result
+          ? {
+              ...team,
+              wins: result.wins,
+              draws: result.draws,
+              losses: result.losses
+            }
+          : team;
+      })
+    };
+  }
+
+  private applySavedPlayerStats(stats: SavedPlayerStat[]): void {
+    if (!this.pelada) {
+      return;
+    }
+
+    const playerNamesById = new Map<string, string>();
+    for (const currentStat of this.pelada.playerStats || []) {
+      playerNamesById.set(String(currentStat.playerId), currentStat.playerName || '');
+    }
+    for (const control of this.statsArray.controls) {
+      const playerId = String(control.get('playerId')?.value || '');
+      const playerName = String(control.get('playerName')?.value || '');
+      if (playerId && playerName) {
+        playerNamesById.set(playerId, playerName);
+      }
+    }
+
+    this.pelada = {
+      ...this.pelada,
+      playerStats: stats.map((stat) => ({
+        ...stat,
+        playerName: playerNamesById.get(String(stat.playerId)) || ''
+      }))
+    };
+  }
+
+  private triggerRatingEffect(score: number, playerName: string): void {
+    const formattedName = toPlayerDisplayName(playerName);
+
+    if (score >= 4) {
+      this.triggerGameEffect({
+        tone: 'rating-high',
+        icon: 'local_fire_department',
+        title: 'BADASS!',
+        subtitle: `${formattedName} recebeu uma nota alta: ${this.formatRatingScore(score)}.`
+      });
+      return;
+    }
+
+    if (score <= 2) {
+      this.triggerGameEffect({
+        tone: 'rating-low',
+        icon: 'sentiment_very_dissatisfied',
+        title: 'QUE ISSO?!',
+        subtitle: `${formattedName} recebeu ${this.formatRatingScore(score)}.`
+      });
+      return;
+    }
+
+    this.triggerGameEffect({
+      tone: 'rating-mid',
+      icon: 'star',
+      title: 'NOTA REGISTRADA',
+      subtitle: `${formattedName}: ${this.formatRatingScore(score)}.`
+    });
+  }
+
+  private triggerGameEffect(effect: GameEffect): void {
+    if (this.gameEffectTimer) {
+      clearTimeout(this.gameEffectTimer);
+    }
+
+    this.gameEffect = effect;
+    this.gameEffectTimer = setTimeout(() => {
+      this.gameEffect = null;
+      this.gameEffectTimer = null;
+    }, 1700);
   }
 
   private animateRatingFlow(direction: 'left' | 'right', onDone: () => void): void {

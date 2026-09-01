@@ -8,6 +8,26 @@
     <mat-progress-bar mode="indeterminate"></mat-progress-bar>
   }
 
+  @if (gameEffect) {
+    <div
+      class="game-effect-overlay"
+      [class.goal]="gameEffect.tone === 'goal'"
+      [class.assist]="gameEffect.tone === 'assist'"
+      [class.rating-low]="gameEffect.tone === 'rating-low'"
+      [class.rating-high]="gameEffect.tone === 'rating-high'"
+      [class.rating-mid]="gameEffect.tone === 'rating-mid'"
+      aria-live="polite"
+    >
+      <span class="game-effect-orb">
+        <mat-icon>{{ gameEffect.icon }}</mat-icon>
+      </span>
+      <div class="game-effect-card">
+        <strong>{{ gameEffect.title }}</strong>
+        <span>{{ gameEffect.subtitle }}</span>
+      </div>
+    </div>
+  }
+
   @if (pelada) {
     <section class="panel" [class.tournament-hero]="isTournament">
       <h2 class="panel-title">Racha de {{ pelada.date | date : 'dd/MM/yyyy' : 'UTC' }}</h2>
@@ -981,44 +1001,57 @@
             }
 
             @for (statIndex of filteredStatsIndexes; track statIndex) {
-              <div [formGroupName]="statIndex" class="panel stat-row">
-                <h3>{{ statsArray.at(statIndex).get('playerName')?.value | playerName }}</h3>
+              <div
+                [formGroupName]="statIndex"
+                class="panel stat-row score-entry-card"
+                [class.score-entry-card-active]="statImpactTotal(statIndex) > 0"
+              >
+                <div class="score-entry-header">
+                  <div>
+                    <span class="score-entry-kicker">Jogador</span>
+                    <h3>{{ statsArray.at(statIndex).get('playerName')?.value | playerName }}</h3>
+                  </div>
+                  <span class="score-entry-total" [class.active]="statImpactTotal(statIndex) > 0">
+                    <mat-icon>bolt</mat-icon>
+                    {{ statImpactTotal(statIndex) }}
+                  </span>
+                </div>
 
                 <div class="number-input-grid stats-number-grid">
-                  <mat-form-field appearance="outline" class="digit-field stats-digit-field">
+                  <mat-form-field
+                    appearance="outline"
+                    class="digit-field stats-digit-field score-digit-field"
+                    [class.score-value-active]="statGoalsValue(statIndex) > 0"
+                  >
                     <mat-label>Gols</mat-label>
-                    <mat-select formControlName="goals">
+                    <mat-select formControlName="goals" (valueChange)="onScoreInputChange('goal', statIndex, $event)">
                       @for (value of statsValueOptions; track value) {
                         <mat-option [value]="value">{{ value }}</mat-option>
                       }
                     </mat-select>
                   </mat-form-field>
 
-                  <mat-form-field appearance="outline" class="digit-field stats-digit-field">
+                  <mat-form-field
+                    appearance="outline"
+                    class="digit-field stats-digit-field score-digit-field"
+                    [class.score-value-active]="statAssistsValue(statIndex) > 0"
+                  >
                     <mat-label>Assist.</mat-label>
-                    <mat-select formControlName="assists">
+                    <mat-select formControlName="assists" (valueChange)="onScoreInputChange('assist', statIndex, $event)">
                       @for (value of statsValueOptions; track value) {
                         <mat-option [value]="value">{{ value }}</mat-option>
                       }
                     </mat-select>
                   </mat-form-field>
                 </div>
+
+                @if (statImpactTotal(statIndex) > 0) {
+                  <div class="score-entry-feedback">
+                    {{ statGoalsValue(statIndex) }}G / {{ statAssistsValue(statIndex) }}A registrado
+                  </div>
+                }
               </div>
             }
-          </div>
-
-          <div class="team-grid-toolbar">
-            <button
-              mat-stroked-button
-              type="button"
-              color="primary"
-              (click)="addTeamSlot()"
-              [disabled]="actionLoading || isConcluded || teamsArray.length >= maxTeamsPerRacha"
-            >
-              <mat-icon>group_add</mat-icon>
-              Adicionar time
-            </button>
-            <small class="muted">{{ teamsArray.length }}/{{ maxTeamsPerRacha }} times em edição</small>
           </div>
 
           <div class="form-actions">
