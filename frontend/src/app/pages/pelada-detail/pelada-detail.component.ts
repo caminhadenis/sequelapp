@@ -27,6 +27,8 @@ import { toAbsoluteProfileImageUrl } from '../../shared/utils/profile-image';
 import { toPlayerDisplayName } from '../../shared/utils/player-name';
 import {
   CraqueVoteSelection,
+  DrawTeamOption,
+  DrawTeamResult,
   PeladaDetail,
   TeamsDrawResponse,
   PeladaGuestPlayer,
@@ -119,6 +121,7 @@ export class PeladaDetailComponent implements OnInit {
   loading = false;
   actionLoading = false;
   exportingTeamsImage = false;
+  exportingDrawOptionsImage = false;
 
   ratingCards: RatingCard[] = [];
   myMatchRating: number | null = null;
@@ -138,6 +141,7 @@ export class PeladaDetailComponent implements OnInit {
   playerStatsSearchTerm = '';
   drawPlayersSearchTerm = '';
   lastDrawResult: TeamsDrawResponse | null = null;
+  selectedDrawOptionId = '';
   drawGuestPlayers: DrawGuestPlayer[] = [];
   readonly guestPositionOptions: Array<{ value: PlayerPosition; label: string }> = [
     { value: 'ZAGUEIRO', label: 'Zagueiro' },
@@ -471,6 +475,7 @@ export class PeladaDetailComponent implements OnInit {
         this.pelada = this.normalizePeladaPlayerImages(pelada);
         this.users = users;
         this.lastDrawResult = null;
+        this.selectedDrawOptionId = '';
 
         this.buildTeamForm(pelada);
         this.syncDrawFormWithCurrentTeams(pelada);
@@ -854,6 +859,7 @@ export class PeladaDetailComponent implements OnInit {
     );
     this.drawGuestPlayers = [];
     this.lastDrawResult = null;
+    this.selectedDrawOptionId = '';
   }
 
   drawGuestChipLabel(guest: DrawGuestPlayer): string {
@@ -863,7 +869,35 @@ export class PeladaDetailComponent implements OnInit {
     return `${toPlayerDisplayName(guest.name)} • ${labelPosition} • stamina ${labelStamina} • nota ${labelRating}`;
   }
 
-  drawTeamPlayersPreview(team: TeamsDrawResponse['teams'][number]): string {
+  get drawOptions(): DrawTeamOption[] {
+    if (!this.lastDrawResult) {
+      return [];
+    }
+
+    if (this.lastDrawResult.options?.length) {
+      return this.lastDrawResult.options;
+    }
+
+    return [
+      {
+        id: 'option-1',
+        label: 'Opção 1',
+        teams: this.lastDrawResult.teams || [],
+        balance: this.lastDrawResult.balance
+      }
+    ];
+  }
+
+  get selectedDrawOption(): DrawTeamOption | null {
+    const options = this.drawOptions;
+    if (options.length === 0) {
+      return null;
+    }
+
+    return options.find((option) => option.id === this.selectedDrawOptionId) || options[0];
+  }
+
+  drawTeamPlayersPreview(team: DrawTeamResult): string {
     return (team.players || [])
       .map((player) => `${toPlayerDisplayName(player.name)}${player.isGuest ? ' (Convidado)' : ''}`)
       .join(', ');
@@ -1342,10 +1376,10 @@ export class PeladaDetailComponent implements OnInit {
       .subscribe({
         next: (response) => {
           this.lastDrawResult = response;
-          this.applyDrawnTeamsToForm(response);
+          this.selectedDrawOptionId = this.drawOptions[0]?.id || '';
           this.actionLoading = false;
           this.snackBar.open(
-            'Times sorteados com equilíbrio de nota, posição e stamina. Revise e clique em Salvar times.',
+            'Três opções de times foram geradas. Escolha uma opção e aprove para preencher os times.',
             'Fechar',
             {
               duration: 3800
@@ -1361,7 +1395,23 @@ export class PeladaDetailComponent implements OnInit {
       });
   }
 
-  private applyDrawnTeamsToForm(drawResult: TeamsDrawResponse): void {
+  approveDrawOption(option: DrawTeamOption): void {
+    if (!this.ensureNotConcluded() || !this.authService.isAdmin || this.actionLoading || !option) {
+      return;
+    }
+
+    this.selectedDrawOptionId = option.id;
+    this.applyDrawnTeamsToForm(option);
+    this.snackBar.open(`${option.label} aprovada. Revise e clique em Salvar times.`, 'Fechar', {
+      duration: 3200
+    });
+  }
+
+  selectDrawOption(option: DrawTeamOption): void {
+    this.selectedDrawOptionId = option.id;
+  }
+
+  private applyDrawnTeamsToForm(drawResult: Pick<DrawTeamOption, 'teams'>): void {
     this.teamsArray.clear();
     const registeredUserIds = new Set(this.users.map((user) => String(user.id)));
 
@@ -2084,6 +2134,19 @@ export class PeladaDetailComponent implements OnInit {
     return this.buildFieldLayout(players);
   }
 
+  drawOptionTeamFieldLayout(team: DrawTeamResult): TeamFieldLayout {
+    const players: TeamFieldPlayer[] = (team.players || [])
+      .map((player) => ({
+        id: String(player.id),
+        name: player.name,
+        position: player.position || undefined,
+        isGuest: Boolean(player.isGuest)
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return this.buildFieldLayout(players);
+  }
+
   selectionOfRoundFieldLayout(): TeamFieldLayout | null {
     const selectionPlayers = this.pelada?.selectionOfRound?.players || [];
     if (selectionPlayers.length === 0) {
@@ -2166,6 +2229,36 @@ export class PeladaDetailComponent implements OnInit {
       });
     } finally {
       this.exportingTeamsImage = false;
+    }
+  }
+
+  async exportDrawOptionsImage(): Promise<void> {
+    if (this.drawOptions.length === 0 || this.exportingDrawOptionsImage) {
+      return;
+    }
+
+    this.exportingDrawOptionsImage = true;
+    try {
+      const blob = await this.buildDrawOptionsExportImageBlob(this.drawOptions);
+      const copiedToClipboard = await this.copyImageBlobToClipboard(blob);
+
+      if (copiedToClipboard) {
+        this.snackBar.open('Imagem das opções copiada para a área de transferência.', 'Fechar', {
+          duration: 3200
+        });
+        return;
+      }
+
+      this.downloadImageBlob(blob, this.drawOptionsExportFileName());
+      this.snackBar.open('Imagem das opções gerada e baixada em PNG.', 'Fechar', {
+        duration: 3200
+      });
+    } catch {
+      this.snackBar.open('Não foi possível exportar as opções agora. Tente novamente.', 'Fechar', {
+        duration: 3200
+      });
+    } finally {
+      this.exportingDrawOptionsImage = false;
     }
   }
 
@@ -2363,6 +2456,89 @@ export class PeladaDetailComponent implements OnInit {
     return `racha-times-${dateLabel}.png`;
   }
 
+  private drawOptionsExportFileName(): string {
+    const dateValue = this.pelada?.date;
+    if (!dateValue) {
+      return 'racha-opcoes-times.png';
+    }
+
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) {
+      return 'racha-opcoes-times.png';
+    }
+
+    return `racha-opcoes-times-${date.toISOString().slice(0, 10)}.png`;
+  }
+
+  private async buildDrawOptionsExportImageBlob(options: DrawTeamOption[]): Promise<Blob> {
+    const safeOptions = options.slice(0, 3);
+    const optionWidth = 1120;
+    const teamCardWidth = 260;
+    const teamCardHeight = 320;
+    const gap = 16;
+    const pagePadding = 28;
+    const titleHeight = 96;
+    const optionHeaderHeight = 58;
+    const optionHeight = optionHeaderHeight + teamCardHeight + 28;
+
+    const width = pagePadding * 2 + optionWidth;
+    const height = titleHeight + pagePadding + safeOptions.length * optionHeight + pagePadding;
+    const scale = 2;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(width * scale);
+    canvas.height = Math.round(height * scale);
+    const context = canvas.getContext('2d');
+
+    if (!context) {
+      throw new Error('Falha ao criar contexto do canvas.');
+    }
+
+    context.scale(scale, scale);
+
+    const background = context.createLinearGradient(0, 0, width, height);
+    background.addColorStop(0, '#f6ebff');
+    background.addColorStop(0.52, '#fff2e5');
+    background.addColorStop(1, '#f8f6ff');
+    context.fillStyle = background;
+    context.fillRect(0, 0, width, height);
+
+    context.fillStyle = '#5b21b6';
+    context.font = '700 34px Arial';
+    context.fillText('Racha - Opções de Times', pagePadding, 52);
+
+    context.fillStyle = '#7c3aed';
+    context.font = '500 18px Arial';
+    context.fillText(`Gerado em ${new Date().toLocaleString('pt-BR')}`, pagePadding, 80);
+
+    safeOptions.forEach((option, optionIndex) => {
+      const optionX = pagePadding;
+      const optionY = titleHeight + optionIndex * optionHeight;
+
+      this.drawRoundedRect(context, optionX, optionY, optionWidth, optionHeight - 12, 18, '#ffffff', '#ead7ff');
+
+      context.fillStyle = '#5b21b6';
+      context.font = '700 24px Arial';
+      context.fillText(option.label, optionX + 18, optionY + 34);
+
+      context.fillStyle = '#7c3aed';
+      context.font = '600 15px Arial';
+      context.fillText(
+        `Médias ${option.balance.minAverageRating.toFixed(2)} - ${option.balance.maxAverageRating.toFixed(2)} | Diferença ${option.balance.spread.toFixed(2)}`,
+        optionX + 150,
+        optionY + 34
+      );
+
+      option.teams.forEach((team, teamIndex) => {
+        const cardX = optionX + 18 + teamIndex * (teamCardWidth + gap);
+        const cardY = optionY + optionHeaderHeight;
+        this.drawDrawOptionTeamCard(context, team, cardX, cardY, teamCardWidth, teamCardHeight, teamIndex);
+      });
+    });
+
+    return this.canvasToBlob(canvas);
+  }
+
   private async buildTeamsExportImageBlob(teams: PeladaDetail['teams']): Promise<Blob> {
     const columns = teams.length === 1 ? 1 : 2;
     const rows = Math.ceil(teams.length / columns);
@@ -2458,6 +2634,37 @@ export class PeladaDetailComponent implements OnInit {
     context.fillStyle = '#6b7280';
     context.font = '500 16px Arial';
     context.fillText(goalkeepersLabel, x + 16, y + height - 26);
+  }
+
+  private drawDrawOptionTeamCard(
+    context: CanvasRenderingContext2D,
+    team: DrawTeamResult,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    index: number
+  ): void {
+    this.drawRoundedRect(context, x, y, width, height, 14, '#ffffff', '#e8d7ff');
+
+    context.fillStyle = '#5b21b6';
+    context.font = '700 19px Arial';
+    context.fillText(this.teamDisplayName(index), x + 12, y + 24);
+
+    context.fillStyle = '#f97316';
+    context.font = '700 14px Arial';
+    context.fillText(`Média ${team.averageRating.toFixed(2)}`, x + 12, y + 44);
+
+    const pitchX = x + 10;
+    const pitchY = y + 56;
+    const pitchWidth = width - 20;
+    const pitchHeight = height - 68;
+    this.drawPitch(context, pitchX, pitchY, pitchWidth, pitchHeight);
+
+    const layout = this.drawOptionTeamFieldLayout(team);
+    this.drawPlayersLine(context, layout.attack, pitchX, pitchY + pitchHeight * 0.22, pitchWidth);
+    this.drawPlayersLine(context, layout.midfield, pitchX, pitchY + pitchHeight * 0.5, pitchWidth);
+    this.drawPlayersLine(context, layout.defense, pitchX, pitchY + pitchHeight * 0.78, pitchWidth);
   }
 
   private drawPitch(

@@ -2,13 +2,13 @@ import { authenticate, authorize } from '../middleware/auth.js';
 import { Pelada } from '../models/Pelada.js';
 import { User } from '../models/User.js';
 import { recalculateAllUsersStats } from '../services/stats-service.js';
-import { getParticipantIdSet, validateTeamsShape } from '../utils/pelada.js';
+import { getParticipantIdSet, getTeammateIdSet, validateTeamsShape } from '../utils/pelada.js';
 import {
   buildTournamentInfo,
   generateDoubleRoundRobinMatches,
   syncTeamResultsFromMatches
 } from '../utils/tournament.js';
-import { drawBalancedTeams } from '../utils/team-draw.js';
+import { drawBalancedTeamOptions } from '../utils/team-draw.js';
 import { sendPushNotificationToUsers } from '../utils/push-notification.js';
 import { summarizeRachaRatings } from '../utils/rating-average.js';
 import { canRequesterSeeRatings } from '../utils/user-visibility.js';
@@ -527,7 +527,7 @@ export async function peladaRoutes(fastify) {
       const playersById = new Map(players.map((player) => [String(player._id), player]));
       const orderedPlayers = uniquePlayerIds.map((playerId) => playersById.get(playerId)).filter(Boolean);
 
-      let drawResult;
+      let drawOptions;
       try {
         const registeredDrawPlayers = orderedPlayers.map((player) => ({
           id: String(player._id),
@@ -541,11 +541,12 @@ export async function peladaRoutes(fastify) {
           isGuest: false
         }));
 
-        drawResult = drawBalancedTeams(
+        drawOptions = drawBalancedTeamOptions(
           [...registeredDrawPlayers, ...normalizedGuestPlayers],
           parsedTeamCount,
           {
-            maxPlayersPerTeam: 5
+            maxPlayersPerTeam: 5,
+            optionsCount: 3
           }
         );
       } catch (error) {
@@ -568,11 +569,12 @@ export async function peladaRoutes(fastify) {
       await pelada.save();
 
       return {
-        message: 'Sorteio equilibrado gerado com sucesso.',
+        message: 'Opções de sorteio equilibrado geradas com sucesso.',
         teamCount: parsedTeamCount,
         selectedPlayers: uniquePlayerIds.length + normalizedGuestPlayers.length,
-        teams: drawResult.teams,
-        balance: drawResult.balance
+        options: drawOptions,
+        teams: drawOptions[0]?.teams || [],
+        balance: drawOptions[0]?.balance || null
       };
     }
   );
@@ -1179,6 +1181,13 @@ export async function peladaRoutes(fastify) {
       return reply.code(400).send({ message: 'Nao e permitido votar em si mesmo.' });
     }
 
+    const teammateIds = getTeammateIdSet(pelada, fromUserId);
+    if (!teammateIds.has(targetId)) {
+      return reply.code(403).send({
+        message: 'Voce so pode dar nota para jogadores que estavam no seu time neste racha.'
+      });
+    }
+
     const alreadyVoted = pelada.votes.some(
       (vote) => String(vote.fromUser) === fromUserId && String(vote.toUser) === targetId
     );
@@ -1387,6 +1396,7 @@ export async function peladaRoutes(fastify) {
       participants.has(String(request.user.id));
     const canCurrentUserVoteCraque = canCurrentUserVote;
     const currentUserId = String(request.user.id);
+    const teammateIds = getTeammateIdSet(pelada, currentUserId);
     const votesReceivedByCurrentUser = (pelada.votes || [])
       .filter((vote) => String(vote.toUser) === currentUserId)
       .map((vote) => Number(vote.score || 0));
@@ -1419,6 +1429,7 @@ export async function peladaRoutes(fastify) {
           alreadyRatedByMe: votedByMe.has(participantId),
           canVote:
             canCurrentUserVote &&
+            teammateIds.has(participantId) &&
             participantId !== String(request.user.id) &&
             !votedByMe.has(participantId)
         };

@@ -26,6 +26,35 @@ export function getParticipantIdSet(pelada) {
   return participants;
 }
 
+export function getTeammateIdSet(pelada, playerId) {
+  const normalizedPlayerId = normalizeUserId(playerId);
+  const teammates = new Set();
+
+  if (!normalizedPlayerId) {
+    return teammates;
+  }
+
+  for (const team of pelada.teams || []) {
+    const teamPlayerIds = (team.players || [])
+      .map((playerRef) => normalizeUserId(playerRef))
+      .filter((value) => value && value !== '[object Object]');
+
+    if (!teamPlayerIds.includes(normalizedPlayerId)) {
+      continue;
+    }
+
+    for (const teammateId of teamPlayerIds) {
+      if (teammateId !== normalizedPlayerId) {
+        teammates.add(teammateId);
+      }
+    }
+
+    break;
+  }
+
+  return teammates;
+}
+
 export function validateTeamsShape(teams) {
   if (!Array.isArray(teams) || teams.length < 1 || teams.length > 4) {
     return 'Uma pelada deve possuir entre 1 e 4 times.';

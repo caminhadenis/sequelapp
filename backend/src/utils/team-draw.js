@@ -342,7 +342,59 @@ function buildTeamSummary(teamPlayers, index) {
   };
 }
 
-export function drawBalancedTeams(players, teamCount, { maxPlayersPerTeam = 5 } = {}) {
+function buildDrawResult(best) {
+  const teams = (best?.teams || []).map((teamPlayers, index) => buildTeamSummary(teamPlayers, index));
+  const averages = teams.map((team) => team.averageRating);
+  const maxAverage = Math.max(...averages);
+  const minAverage = Math.min(...averages);
+  const spread = Number((maxAverage - minAverage).toFixed(2));
+  const highStaminaCounts = teams.map((team) => Number(team.staminaCounts.ALTA || 0));
+  const lowStaminaCounts = teams.map((team) => Number(team.staminaCounts.BAIXA || 0));
+  const highSpread = Math.max(...highStaminaCounts) - Math.min(...highStaminaCounts);
+  const lowSpread = Math.max(...lowStaminaCounts) - Math.min(...lowStaminaCounts);
+
+  return {
+    teams,
+    balance: {
+      minAverageRating: Number(minAverage.toFixed(2)),
+      maxAverageRating: Number(maxAverage.toFixed(2)),
+      spread,
+      staminaSpread: {
+        high: highSpread,
+        low: lowSpread
+      }
+    }
+  };
+}
+
+function drawSingleBalancedTeams(normalizedPlayers, capacities, assignmentContext) {
+  let best = null;
+
+  for (let restart = 0; restart < 28; restart += 1) {
+    const initialTeams = createInitialAssignment(shuffle(normalizedPlayers), capacities);
+    const optimized = optimizeAssignment(initialTeams, assignmentContext, 1800);
+
+    if (!best || optimized.score < best.score) {
+      best = optimized;
+    }
+  }
+
+  return buildDrawResult(best);
+}
+
+function drawOptionSignature(option) {
+  return (option?.teams || [])
+    .map((team) =>
+      (team.players || [])
+        .map((player) => String(player.id))
+        .sort()
+        .join(',')
+    )
+    .sort()
+    .join('|');
+}
+
+export function drawBalancedTeamOptions(players, teamCount, { maxPlayersPerTeam = 5, optionsCount = 3 } = {}) {
   if (!Array.isArray(players) || players.length === 0) {
     throw new Error('Selecione jogadores para realizar o sorteio.');
   }
@@ -374,37 +426,46 @@ export function drawBalancedTeams(players, teamCount, { maxPlayersPerTeam = 5 } 
   const assignmentContext = {
     minimumDefenders: minimumDefendersPerTeam(totalDefenders, teamCount)
   };
-  let best = null;
 
-  for (let restart = 0; restart < 28; restart += 1) {
-    const initialTeams = createInitialAssignment(shuffle(normalizedPlayers), capacities);
-    const optimized = optimizeAssignment(initialTeams, assignmentContext, 1800);
+  const targetOptionsCount = Math.max(1, Number(optionsCount || 1));
+  const options = [];
+  const signatures = new Set();
+  const maxAttempts = targetOptionsCount * 8;
 
-    if (!best || optimized.score < best.score) {
-      best = optimized;
+  for (let attempt = 0; attempt < maxAttempts && options.length < targetOptionsCount; attempt += 1) {
+    const option = drawSingleBalancedTeams(normalizedPlayers, capacities, assignmentContext);
+    const signature = drawOptionSignature(option);
+    if (signatures.has(signature) && options.length > 0) {
+      continue;
     }
+
+    signatures.add(signature);
+    options.push({
+      id: `option-${options.length + 1}`,
+      label: `Opção ${options.length + 1}`,
+      ...option
+    });
   }
 
-  const teams = (best?.teams || []).map((teamPlayers, index) => buildTeamSummary(teamPlayers, index));
-  const averages = teams.map((team) => team.averageRating);
-  const maxAverage = Math.max(...averages);
-  const minAverage = Math.min(...averages);
-  const spread = Number((maxAverage - minAverage).toFixed(2));
-  const highStaminaCounts = teams.map((team) => Number(team.staminaCounts.ALTA || 0));
-  const lowStaminaCounts = teams.map((team) => Number(team.staminaCounts.BAIXA || 0));
-  const highSpread = Math.max(...highStaminaCounts) - Math.min(...highStaminaCounts);
-  const lowSpread = Math.max(...lowStaminaCounts) - Math.min(...lowStaminaCounts);
+  return options
+    .sort((left, right) => left.balance.spread - right.balance.spread)
+    .map((option, index) => ({
+      ...option,
+      id: `option-${index + 1}`,
+      label: `Opção ${index + 1}`
+    }));
+}
+
+export function drawBalancedTeams(players, teamCount, { maxPlayersPerTeam = 5 } = {}) {
+  const [bestOption] = drawBalancedTeamOptions(players, teamCount, { maxPlayersPerTeam, optionsCount: 1 });
 
   return {
-    teams,
-    balance: {
-      minAverageRating: Number(minAverage.toFixed(2)),
-      maxAverageRating: Number(maxAverage.toFixed(2)),
-      spread,
-      staminaSpread: {
-        high: highSpread,
-        low: lowSpread
-      }
+    teams: bestOption?.teams || [],
+    balance: bestOption?.balance || {
+      minAverageRating: 0,
+      maxAverageRating: 0,
+      spread: 0,
+      staminaSpread: { high: 0, low: 0 }
     }
   };
 }

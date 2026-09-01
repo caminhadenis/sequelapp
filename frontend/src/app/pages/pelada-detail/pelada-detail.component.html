@@ -686,33 +686,77 @@
             </div>
           </form>
 
-          @if (lastDrawResult) {
+          @if (drawOptions.length > 0) {
             <div class="draw-summary">
-              <strong>Resultado do sorteio</strong>
-              <div class="draw-balance-row">
-                <span class="status-chip">Menor média: {{ lastDrawResult.balance.minAverageRating | number : '1.2-2' }}</span>
-                <span class="status-chip">Maior média: {{ lastDrawResult.balance.maxAverageRating | number : '1.2-2' }}</span>
-                <span class="status-chip success">Diferença: {{ lastDrawResult.balance.spread | number : '1.2-2' }}</span>
+              <div class="draw-summary-header">
+                <div>
+                  <strong>Opções do sorteio</strong>
+                  <small class="muted">Compare as combinações, compartilhe em PNG e aprove a formação escolhida.</small>
+                </div>
+                <button
+                  mat-stroked-button
+                  color="primary"
+                  type="button"
+                  (click)="exportDrawOptionsImage()"
+                  [disabled]="exportingDrawOptionsImage"
+                >
+                  <mat-icon>ios_share</mat-icon>
+                  {{ exportingDrawOptionsImage ? 'Gerando PNG...' : 'Exportar opções (PNG)' }}
+                </button>
               </div>
 
-              <div class="draw-teams-grid">
-                @for (team of lastDrawResult.teams; track team.name) {
-                  <div class="draw-team-card">
-                    <strong>{{ team.name }}</strong>
-                    <small>Média {{ team.averageRating | number : '1.2-2' }}</small>
-                    <small>
-                      {{ team.positionCounts.ZAGUEIRO }} ZAG · {{ team.positionCounts.MEIA }} MEI ·
-                      {{ team.positionCounts.ATACANTE }} ATA
-                    </small>
-                    <small>
-                      {{ team.staminaCounts.BAIXA }} baixa · {{ team.staminaCounts.MEDIA }} média ·
-                      {{ team.staminaCounts.ALTA }} alta
-                    </small>
-                    <small class="muted">{{ drawTeamPlayersPreview(team) }}</small>
-                  </div>
+              <div class="draw-options-grid">
+                @for (option of drawOptions; track option.id) {
+                  <article
+                    class="draw-option-card"
+                    [class.selected]="selectedDrawOptionId === option.id"
+                    (click)="selectDrawOption(option)"
+                  >
+                    <div class="draw-option-header">
+                      <div>
+                        <strong>{{ option.label }}</strong>
+                        <small class="muted">
+                          Diferença de médias: {{ option.balance.spread | number : '1.2-2' }}
+                        </small>
+                      </div>
+                      <span class="status-chip success">
+                        {{ option.balance.minAverageRating | number : '1.2-2' }} -
+                        {{ option.balance.maxAverageRating | number : '1.2-2' }}
+                      </span>
+                    </div>
+
+                    <div class="draw-teams-grid">
+                      @for (team of option.teams; track team.name) {
+                        <div class="draw-team-card">
+                          <strong>{{ team.name }}</strong>
+                          <small>Média {{ team.averageRating | number : '1.2-2' }}</small>
+                          <small>
+                            {{ team.positionCounts.ZAGUEIRO }} ZAG · {{ team.positionCounts.MEIA }} MEI ·
+                            {{ team.positionCounts.ATACANTE }} ATA
+                          </small>
+                          <small>
+                            {{ team.staminaCounts.BAIXA }} baixa · {{ team.staminaCounts.MEDIA }} média ·
+                            {{ team.staminaCounts.ALTA }} alta
+                          </small>
+                          <small class="muted">{{ drawTeamPlayersPreview(team) }}</small>
+                        </div>
+                      }
+                    </div>
+
+                    <button
+                      mat-flat-button
+                      color="primary"
+                      type="button"
+                      (click)="approveDrawOption(option); $event.stopPropagation()"
+                      [disabled]="actionLoading || isConcluded"
+                    >
+                      <mat-icon>check_circle</mat-icon>
+                      Aprovar esta opção
+                    </button>
+                  </article>
                 }
               </div>
-              <small class="muted">Se estiver ok, clique em "Salvar times".</small>
+              <small class="muted">Depois de aprovar uma opção, revise abaixo e clique em "Salvar times".</small>
             </div>
           }
         </div>
@@ -1250,6 +1294,7 @@
           <div class="rating-flow-header">
             <div>
               <h3>Avaliação rápida</h3>
+              <p class="muted">Dê nota apenas para quem jogou no seu time.</p>
             </div>
             <span class="status-chip">
               {{ ratingFlowCompletedCount }}/{{ ratingFlowTotalCount }} concluídas
@@ -1331,7 +1376,7 @@
           } @else {
             <div class="flow-done-state">
               <h3>Avaliação concluída</h3>
-              <p class="muted">Você já avaliou todos os jogadores disponíveis neste racha.</p>
+              <p class="muted">Você já avaliou todos os companheiros de time disponíveis neste racha.</p>
               @if (ratedPlayersByMe.length > 0) {
                 <div class="rated-pill-list">
                   @for (rated of ratedPlayersByMe; track rated.playerId) {

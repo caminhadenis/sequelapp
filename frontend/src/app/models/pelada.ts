@@ -242,10 +242,9 @@ export interface DrawTeamResult {
   };
 }
 
-export interface TeamsDrawResponse {
-  message: string;
-  teamCount: number;
-  selectedPlayers: number;
+export interface DrawTeamOption {
+  id: string;
+  label: string;
   teams: DrawTeamResult[];
   balance: {
     minAverageRating: number;
@@ -256,4 +255,13 @@ export interface TeamsDrawResponse {
       low: number;
     };
   };
+}
+
+export interface TeamsDrawResponse {
+  message: string;
+  teamCount: number;
+  selectedPlayers: number;
+  options?: DrawTeamOption[];
+  teams: DrawTeamResult[];
+  balance: DrawTeamOption['balance'];
 }
